@@ -20,6 +20,9 @@ RUN pacman -Syyu --noconfirm && \
   qemu \
   qemu-arch-extra
 
+RUN ln -s /usr/sbin/aarch64-linux-gnu-ar /usr/sbin/ar
+RUN ln -s /usr/sbin/aarch64-linux-gnu-g++ /usr/sbin/g++
+
 USER ${USER}
 WORKDIR /home/${USER}
 
