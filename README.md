@@ -82,6 +82,8 @@ SVE命令を使うにはいくつかの方法がある。
 
 ### Dockerイメージのビルドと動作確認
 
+#### Dockerイメージのビルド
+
 SVE命令を使うクロスコンパイラや、QEMUで実行できる環境がDockerファイルとして用意してある。
 
 適当な場所でこのリポジトリをクローンしよう。
@@ -98,7 +100,9 @@ cd docker
 make
 ```
 
-すると、`kaityo256/xbyak_aarch64_handson`というイメージができる。イメージができたら`make run`でDockerイメージの中に入ることができる。
+すると、`kaityo256/xbyak_aarch64_handson`というイメージができる。なお、キャッシュの問題で最新版のイメージが作成されない場合がある。その場合は`make no-cache`とするとキャッシュを使わずにゼロからビルドしなおす。
+
+イメージができたら`make run`でDockerイメージの中に入ることができる。
 
 ```sh
 $ make run
@@ -110,11 +114,14 @@ docker run -e GIT_USER= -e GIT_TOKEN= -it kaityo256/xbyak_aarch64_handson
 
 環境変数`GIT_USER`や`GIT_TOKEN`は開発用に渡しているものなので気にしないで欲しい。デフォルトで`user`というアカウントでログインするが、`root`というパスワードで`su -`できるので、必要なパッケージがあれば適宜`pacman`でインストールすること。
 
-Dockerイメージの中に入ったら、`xbyak_aarch64_handson/sample`の中にサンプルコードがある。最初に、ARM SVE向けの組み込み関数`svcntb`をコンパイル、実行できるか確認してみよう。コードは`01_sve_length`の中にあり、`make`すればビルド、`make run`すれば実行できる。
+#### 組み込み関数のテスト
+
+Dockerイメージの中に入ったら、`xbyak_aarch64_handson/sample`の中にサンプルコードがある。最初に、ARM SVE向けの組み込み関数`svcntb`をコンパイル、実行できるか確認してみよう。コードは`intrinsic/01_sve_length`の中にあり、`make`すればビルド、`make run`すれば実行できる。
 
 ```sh
 $ cd xbyak_aarch64_handson
 $ cd sample
+$ cd intrinsic
 $ cd 01_sve_length
 $ make
 aarch64-linux-gnu-g++ -static -march=armv8-a+sve -O2 sve_length.cpp
@@ -134,7 +141,6 @@ SVE is available. The length is 128 bits
 
 同様に、256ビットや512ビットも指定できる。
 
-
 ```sh
 $ qemu-aarch64 -cpu max,sve256=on ./a.out
 SVE is available. The length is 256 bits
@@ -143,7 +149,54 @@ $ qemu-aarch64 -cpu max,sve512=on ./a.out
 SVE is available. The length is 512 bits
 ```
 
-TODO: Xbyakの動作確認
+#### Xbyak_aarch64のテスト
+
+次に、Xbyak_aarch64の動作テストをしてみよう。Xbyakのサンプルコードはリポジトリの`sample/xbyak`以下にある。まずはテストコードをコンパイル、実行してみよう。
+
+```sh
+$ cd xbyak_aarch64_handson
+$ cd sample
+$ cd xbyak
+$ cd 01_test
+$ make
+aarch64-linux-gnu-g++ -static test.cpp -L/home/user/xbyak_aarch64_handson/xbyak_aarch64/lib -lxbyak_aarch64
+$ ./a.out
+1
+```
+
+`a.out`を実行して`1`と表示されたら成功だ。なお、実行時にQEMUにオプションを指定する必要がない場合、このように直接`a.out`を実行して構わない。もちろん`a.out`はARM向けバイナリなので、QEMUを通じて実行されている。
+
+さて、ソースを見てみよう。
+
+```cpp
+#include <cstdio>
+#include <xbyak_aarch64/xbyak_aarch64.h>
+
+struct Code : Xbyak_aarch64::CodeGenerator {
+  Code() {
+    mov(w0, 1);
+    ret();
+  }
+};
+
+int main() {
+  Code c;
+  auto f = c.getCode<int (*)()>();
+  c.ready();
+  printf("%d\n", f());
+}
+```
+
+ここで`mov(w0, 1)`の部分が関数の返り値を代入しているところだ。これを適当な値、例えば`mov(w0, 42)`にして、もう一度コンパイル、実行してみよう。
+
+```sh
+$ make
+aarch64-linux-gnu-g++ -static test.cpp -L/home/user/xbyak_aarch64_handson/xbyak_aarch64/lib -lxbyak_aarch64
+$ ./a.out
+42
+```
+
+ちゃんと42が表示された。
 
 ### 組み込み関数
 
@@ -200,6 +253,13 @@ ArchLinuxのパッケージマネージャは`pacman`だ。例えばパッケー
 
 パッケージのアップデート、インストールの前に、`/etc/pacman.d/mirrorlist`の先頭に`Server = https://ftp.jaist.ac.jp/pub/Linux/ArchLinux/$repo/os/$arch`を追加することでミラーとしてJAISTを指定している。これをしないとダウンロード中にpacmanがタイムアウトしてDockerファイルのビルドに失敗することがある。
 
+```Dockerfile
+RUN ln -s /usr/sbin/aarch64-linux-gnu-ar /usr/sbin/ar
+RUN ln -s /usr/sbin/aarch64-linux-gnu-g++ /usr/sbin/g++
+```
+
+後でXbyakのライブラリをビルドするのに、Xbyakが`g++`や`ar`をネイテイブであることを前提に呼び出しているので、それに合わせてクロスコンパイラ`aarch64-linux-gnu-g++`を`g++`に、クロスアーカイバ`aarch64-linux-gnu-ar`を`ar`にそれぞれシンボリックリンクをはっている。ad hocな対応だが、ネイテイブなg++は使わないことと、Makefileをsedで書き換えるのもad hocさでは似たようなものだと思ってこの対応とした。
+
 ### デフォルトユーザの設定
 
 ```Dockerfile
@@ -215,11 +275,19 @@ WORKDIR /home/${USER}
 RUN echo 'alias vi=vim' >> /home/${USER}/.bashrc
 RUN echo 'alias ag++="aarch64-linux-gnu-g++ -static -march=armv8-a+sve -O2"' >> /home/${USER}/.bashrc
 RUN echo 'alias gp="git push https://${GIT_USER}:${GIT_TOKEN}@github.com/${GIT_REPOSITORY}"' >> /home/${USER}/.bashrc
+RUN echo 'export CPLUS_INCLUDE_PATH=/home/user/xbyak_aarch64_handson/xbyak_aarch64' >> /home/${USER}/.bashrc
 COPY dot.vimrc /home/${USER}/.vimrc
 COPY dot.gitconfig /home/${USER}/.gitconfig
 ```
 
-開発に必要な設定。特にクロスコンパイラはコマンドも長いしオプションも長いので、`ag++`にエイリアスを設定してある。`gp`はDocker内部から`git push`するための設定なので無視してかまわない。Vimの設定にこだわりがある人は`dot.vimrc`を修正すれば、コンテナの中に持ち込むことができる。`emacs`が使いたい人は適宜`Dockerfile`を書き換えるなり、`su -`してから`pacman -S --noconfirm emacs`すること。
+開発に必要な設定。特にクロスコンパイラはコマンドも長いしオプションも長いので、`ag++`にエイリアスを設定してある。`CPLUS_INCLUDE_PATH`にXbyakのヘッダを探すパスを設定している。`gp`はDocker内部から`git push`するための設定なので無視してかまわない。Vimの設定にこだわりがある人は`dot.vimrc`を修正すれば、コンテナの中に持ち込むことができる。`emacs`が使いたい人は適宜`Dockerfile`を書き換えるなり、`su -`してから`pacman -S --noconfirm emacs`すること。
+
+```Dockerfile
+RUN git clone --recursive https://github.com/kaityo256/xbyak_aarch64_handson.git
+RUN cd xbyak_aarch64_handson/xbyak_aarch64;make
+```
+
+最後に、コンテナ内でこのリポジトリをクローンしている。サブモジュールとしてxbyak_aarch64を登録しているので、`--recursive`オプションをつけている。そして、`libxbyak_aarch64.a`をビルドするために`make`している。
 
 ## Licence
 
