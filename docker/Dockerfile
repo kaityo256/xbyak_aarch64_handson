@@ -32,4 +32,5 @@ RUN echo 'alias gp="git push https://${GIT_USER}:${GIT_TOKEN}@github.com/${GIT_R
 COPY dot.vimrc /home/${USER}/.vimrc
 COPY dot.gitconfig /home/${USER}/.gitconfig
 
-RUN git clone https://github.com/kaityo256/xbyak_aarch64_handson.git
+RUN git clone --recursive https://github.com/kaityo256/xbyak_aarch64_handson.git
+RUN cd xbyak_aarch64_handson/xbyak_aarch64;make
