@@ -202,6 +202,186 @@ $ ./a.out
 
 ### Xbyak_aarch64
 
+#### ABIの確認
+
+Xbyakは「関数単位でフルアセンブリで記述する」ためのツールだ。アセンブリにおいて関数呼び出しとは単なるジャンプであり、またレジスタその他は全てグローバル変数であるから、関数の引数をどのように私、どのように値を返すか(呼び出し規約)はプログラマに任されている。しかし、C言語のような高級言語を使う場合、コンパイラごとに呼び出し規約が異なると、異なるコンパイラでコンパイルしたオブジェクトファイルがリンクできなくなって不便だ。そこで、それぞれのISAごとにバイナリレベルでのインターフェースを定めたのがApplication Binary Interface (ABI)である。ABIは様々なものを定めているが、呼び出し規約もABIが定めるものの一つだ。
+
+XbyakはC/C++からアセンブリで書かれた関数を呼び出すツールであるから、関数を記述するためには呼び出し規約をしらなければならない。呼び出し規約はISAごとに異なるし、場合によっては一つのISAに複数のABIが規定されている場合もある(参考：[Cの可変長引数とABIの奇妙な関係](https://qiita.com/qnighy/items/be04cfe57f8874121e76))。以下では、呼び出し規約とXbyakの書き方について簡単に見てみよう。
+
+`/sample/xbyak/02_abi`ディレクトリに、Xbyakのひな形として`abi.cpp`が置いてある。中身を見てみよう。
+
+```cpp
+#include <cstdio>
+#include <xbyak_aarch64/xbyak_aarch64.h>
+
+struct Code : Xbyak_aarch64::CodeGenerator {
+  Code() {
+    ret();
+  }
+};
+
+int main() {
+  Code c;
+  auto f = c.getCode<void (*)()>();
+  c.ready();
+}
+```
+
+Xbyakの作る関数は単に`ret`するだけで、それを`void f()`という関数と解釈するため、テンプレートに渡す関数の型は`void (*)()`になっている。まずはこれを、整数`1`を返す関数に修正してみよう。そのためには、AAarch64において整数をどのように返すか知らなければならない。もちろん公式ドキュメントを見ればちゃんと書いてあるが、いちいちそれを読んだり暗記するのは現実的ではない。ここでは簡単なコードを書いてそれをコンパイルしてみるのが簡単だ。
+
+以下のようなコードを書いてみよう。
+
+```cpp
+int func(){
+  return 1;
+}
+```
+
+コンパイルしてアセンブリを吐かせる。
+
+```sh
+$ ag++ -S test.cpp
+$ cat test.s
+        .arch armv8-a+sve
+        .file   "test.cpp"
+        .text
+        .align  2
+        .p2align 4,,11
+        .global _Z4funcv
+        .type   _Z4funcv, %function
+_Z4funcv:
+.LFB0:
+        .cfi_startproc
+        mov     w0, 1
+        ret
+        .cfi_endproc
+.LFE0:
+        .size   _Z4funcv, .-_Z4funcv
+        .ident  "GCC: (GNU) 11.2.0"
+        .section        .note.GNU-stack,"",@progbits
+```
+
+これを見ると、整数は`w0`というレジスタに値を入れて返せばよいことがわかる。ここから、先ほどの`abi.cpp`を以下のように修正しよう。
+
+```cpp
+#include <cstdio>
+#include <xbyak_aarch64/xbyak_aarch64.h>
+
+struct Code : Xbyak_aarch64::CodeGenerator {
+  Code() {
+    mov(w0, 1); // mov w0, 1に対応するXbyakのコード
+    ret();
+  }
+};
+
+int main() {
+  Code c;
+  auto f = c.getCode<int (*)()>(); //関数ポインタ型を int f()に対応するよう修正
+  printf("%d\n",f()); // f()の実行結果を表示
+  c.ready();
+}
+```
+
+コンパイル、実行してみよう。
+
+```sh
+$ make
+$ ./a.out
+1
+```
+
+ちゃんと1が表示された。
+
+次は引数を受け取ってみよう。整数を受け取り、1だけ加算した値を返す関数を考える。例によってコンパイラにアセンブリを教えてもらおう。
+
+```cpp
+int func(int i){
+  return i+1;
+}
+```
+
+上記のコードを`ag++ -S`でコンパイルすると、対応するアセンブリが、
+
+```txt
+  add w0, w0, 1
+  ret
+```
+
+であることがわかる。つまり、第一整数引数は`w0`に入ってくるので、それに`1`を追加した結果を`w0`に代入すればよい。対応するXbyakのコードは以下のようになるだろう。
+
+```cpp
+#include <cstdio>
+#include <xbyak_aarch64/xbyak_aarch64.h>
+
+struct Code : Xbyak_aarch64::CodeGenerator {
+  Code() {
+    add(w0, w0, 1); // 第一引数をw0で受け取り、1加算してからw0に値を入れる
+    ret();
+  }
+};
+
+int main() {
+  Code c;
+  auto f = c.getCode<int (*)(int)>(); //関数ポインタ型を int f(int)に
+  printf("%d\n",f(1)); //f(1)を呼び出す
+  c.ready();
+}
+```
+
+実行してみると2が表示される。
+
+```sh
+$ make
+$ ./a.out
+2
+```
+
+全く同様に、二つ引数を受け取り、和を返す関数は以下のようにかける。
+
+```cpp
+#include <cstdio>
+#include <xbyak_aarch64/xbyak_aarch64.h>
+
+struct Code : Xbyak_aarch64::CodeGenerator {
+  Code() {
+    add(w0, w0, w1); // w0 = w0 + w1
+    ret();
+  }
+};
+
+int main() {
+  Code c;
+  auto f = c.getCode<int (*)(int, int)>(); // int f(int, int)
+  printf("%d\n",f(3,4)); // 3+4を計算
+  c.ready();
+}
+```
+
+実行結果は7になる。
+
+ここでは整数を扱ったためにレジスタが`w0,w1`、加算命令が`add`だったが、レジスタを`d0, d1`、加算命令を`fadd`にすると、そのまま倍精度実数にすることができる。
+
+```cpp
+#include <cstdio>
+#include <xbyak_aarch64/xbyak_aarch64.h>
+
+struct Code : Xbyak_aarch64::CodeGenerator {
+  Code() {
+    fadd(d0, d0, d1); // d0 = d0 + d1
+    ret();
+  }
+};
+
+int main() {
+  Code c;
+  auto f = c.getCode<double (*)(double, double)>(); // double f(double, double);
+  printf("%f\n",f(3.0,4.0)); // 3.0+4.0を計算
+  c.ready();
+}
+```
+
+実行結果は「7.000000」となるはずだ。
+
 ## Dockerfileについて
 
 Dockerfileの中身について簡単に説明しておく。
