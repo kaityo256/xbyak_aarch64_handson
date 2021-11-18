@@ -6,6 +6,52 @@
 
 なお、Dockerの環境構築とC++言語の基礎的な知識については前提とする。
 
+**注意** 本資料は現在鋭意執筆中であり、以下の内容については変更される可能性が高いです。特にDockerはキャッシュの問題で、最新版のイメージが作成されない可能性があります。その場合の更新方法については当日お知らせいたします。
+
+## 事前準備：Dockerのインストール
+
+本ハンズオンではDockerを使うため、あらかじめDockerをインストールしておく必要がある。Windows、MacともにDockerのコミュニティ版であるDocker for Desktopをインストールして使うことになるだろう。Macならターミナルを、WindowsならWSL2にUbuntuをインストールして使うのが良いと思われる。Docker for Desktopのインストール後、ターミナルから
+
+```sh
+docker ps
+```
+
+を実行してエラーが出なければ正しくインストールができている。
+
+```sh
+$ docker ps
+Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
+```
+
+といったエラーが出た場合、正しくインストールされていないか、うまくDockerデーモンと接続できていない。
+
+Dockerデーモンが動いていることがわかったら、イメージをダウンロードして実行できるか確認しよう。
+
+```sh
+$ docker run hello-world
+Unable to find image 'hello-world:latest' locally
+latest: Pulling from library/hello-world
+2db29710123e: Pull complete
+Digest: sha256:cc15c5b292d8525effc0f89cb299f1804f3a725c8d05e158653a563f15e4f685
+Status: Downloaded newer image for hello-world:latest
+
+Hello from Docker!
+This message shows that your installation appears to be working correctly.
+(以下略)
+```
+
+最初に`Unable to find image`と出てくるのは、ローカルにダウンロード済みのイメージが無いのでダウンロードするよ、という意味なので気にしなくて良い。最後に「Hello from Docker!」が表示されたら正しく実行できている。二度目以降の実行では、ローカルにイメージがキャッシュされているのでダウンロードされずに実行される。
+
+```sh
+$ docker run hello-world
+
+Hello from Docker!
+This message shows that your installation appears to be working correctly.
+(以下略)
+```
+
+以下では、Dockerが正しくインストールされ、実行できることを前提とする。
+
 ## 基礎知識
 
 ### なぜSIMDなのか
