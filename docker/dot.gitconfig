@@ -1,0 +1,16 @@
+[user]
+	email = kaityo@users.sourceforge.jp
+	name = H. Watanabe
+[color]
+	ui = true
+[alias]
+	st = status -s
+	ci = commit -a
+	co = checkout
+	graph = log --graph --date-order -C -M --pretty=format:\"<%h> %ad [%an] %Cgreen%d%Creset %s\" --all --date=short
+[push]
+	default = simple
+[core]
+	editor = vim
+[fetch]
+	prune = true
