@@ -2,9 +2,8 @@ all: a.out
 CC=aarch64-linux-gnu-g++
 CPPFLAGS=-static -march=armv8-a+sve -O2
 
-a.out: load.cpp
+a.out: load_add.cpp
 	 $(CC) $(CPPFLAGS) $<
-
 
 run:
 	qemu-aarch64 ./a.out
