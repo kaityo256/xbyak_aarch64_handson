@@ -653,12 +653,12 @@ struct Code : Xbyak_aarch64::CodeGenerator {
 これは、
 
 ```cpp
-int f(){
+int f(int n){
   return 1;
 }
 ```
 
-に対応するアセンブリを生成するXbyakコードだ。実際に生成された機械語を取得するには`Xbyak_aarch64::CodeGenerator::getCode()`を用いれば良い。また、機械語の長さは`getSize()`で取得できる。しかし、取得できるのは機械語(バイナリ)であるため、それを16進表記にする関数を作ってやろう。
+に対応するアセンブリを生成するXbyakコードだ。いまは引数は使わないが、後のために`int`型の引数を受ける型にしておく。実際に生成された機械語を取得するには`Xbyak_aarch64::CodeGenerator::getCode()`を用いれば良い。また、機械語の長さは`getSize()`で取得できる。しかし、取得できるのは機械語(バイナリ)であるため、それを16進表記にする関数を作ってやろう。
 
 ```cpp
 void dump(const uint8_t *b, int len) {
@@ -674,20 +674,152 @@ void dump(const uint8_t *b, int len) {
 ```cpp
 int main() {
   Code c;
-  auto f = c.getCode<int (*)()>();
+  auto f = c.getCode<int (*)(int)>();
   c.ready();
+  printf("%d\n", f(10));
   dump(c.getCode(), c.getSize());
 }
 ```
 
 実行してみよう。
 
+```sh
+$ make
+$ ./a.out
+1
+20008052c0035fd6
+```
 
+最初の`1`がXbyakが生成した関数の実行結果だ。引数を無視して1を返す関数になっている。次に出力される`20008052c0035fd6`がXbyakが生成した機械語の16進表記だ。これをバイナリに直して、objdumpに食わせればアセンブリを見ることができる。
 
 ```sh
-echo 20008052c0035fd6 | xxd -r -p > /tmp/dump
-aarch64-linux-gnu-objdump -D -maarch64 -b binary -d /tmp/dump
+$ echo 20008052c0035fd6 | xxd -r -p > /tmp/dump
+$ aarch64-linux-gnu-objdump -D -maarch64 -b binary -d /tmp/dump
+
+/tmp/dump:     file format binary
+
+
+Disassembly of section .data:
+
+0000000000000000 <.data>:
+   0:   52800020        mov     w0, #0x1                        // #1
+   4:   d65f03c0        ret
 ```
+
+意図の通り、`mov w0, 1; ret`しているコードが生成されている。いちいち`xxd`を通して`objdump`に渡すのは面倒なので、以下の関数が`.bashrc`に定義されている。
+
+```sh
+function dump (){
+echo $1 | xxd -r -p > /tmp/dump;aarch64-linux-gnu-objdump -D -maarch64 -b binary -d /tmp/dump
+}
+```
+
+以下のように使えて便利だ。
+
+```sh
+$ dump 20008052c0035fd6
+
+/tmp/dump:     file format binary
+
+
+Disassembly of section .data:
+
+0000000000000000 <.data>:
+   0:   52800020        mov     w0, #0x1                        // #1
+   4:   d65f03c0        ret
+```
+
+さて、Xbyakがコードを動的に生成する様を見てみよう。引数を無視していた関数を、`n`回1を加算して返す関数に修正する。
+
+```cpp
+struct Code : Xbyak_aarch64::CodeGenerator {
+  Code(int n) {
+    for(int i=0;i<n;i++){
+      add(w0, w0, 1);
+    }
+    ret();
+  }
+};
+```
+
+コンストラクタ`Code`で`int n`を受け取り、その回数だけ`add(w0, w0, 1);`を繰り返している。`Code`のインスタンスを作るところで、`Code c(3);`と繰り返し回数を指定してやろう。
+
+```cpp
+int main() {
+  Code c(3); // ←ここを修正
+  auto f = c.getCode<int (*)(int)>();
+  c.ready();
+  printf("%d\n", f(10));
+  dump(c.getCode(), c.getSize());
+}
+```
+
+コンパイル、実行してみる。
+
+```sh
+$ make
+$ ./a.out
+13
+000400110004001100040011c0035fd6
+```
+
+実行結果として、10に三回1を足された13が表示された。また、Xbyakが生成したコードが`000400110004001100040011c0035fd6`になった。逆アセンブルしてみよう。
+
+```sh
+$ dump 000400110004001100040011c0035fd6
+
+/tmp/dump:     file format binary
+
+
+Disassembly of section .data:
+
+0000000000000000 <.data>:
+   0:   11000400        add     w0, w0, #0x1
+   4:   11000400        add     w0, w0, #0x1
+   8:   11000400        add     w0, w0, #0x1
+   c:   d65f03c0        ret
+```
+
+意図通り、3回`add`するコードになっている。これは実行時に生成されているため、コンパイル時に確定してなくても良い。標準入力から食わせて見よう。
+
+```cpp
+int main(int argc, char **argv) { // コマンドライン引数の受け取り
+  Code c(atoi(argv[1]));          // それをXbyakに渡す
+  auto f = c.getCode<int (*)(int)>();
+  c.ready();
+  printf("%d\n", f(10));
+  dump(c.getCode(), c.getSize());
+}
+```
+
+実行してみよう。
+
+```sh
+$ ./a.out 1
+11
+00040011c0035fd6
+$ ./a.out 2
+12
+0004001100040011c0035fd6
+```
+
+引数ごとに異なる機械語が出力されている。逆アセしてみると、その回数だけ`add`が繰り返されていることがわかる。
+
+```sh
+$ dump 0004001100040011c0035fd6
+
+/tmp/dump:     file format binary
+
+
+Disassembly of section .data:
+
+0000000000000000 <.data>:
+   0:   11000400        add     w0, w0, #0x1
+   4:   11000400        add     w0, w0, #0x1
+   8:   d65f03c0        ret
+```
+
+Xbyakが動的にコードを生成しているのがわかったかと思う。
 
 ## Dockerfileについて
 
