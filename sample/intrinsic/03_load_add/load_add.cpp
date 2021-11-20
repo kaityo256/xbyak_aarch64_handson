@@ -30,9 +30,6 @@ void load_pat() {
   svshow(vb);
 }
 
-double a[] = {0, 1, 2, 3, 4, 5, 6, 7};
-double b[] = {1, 1, 1, 1, 1, 1, 1, 1};
-
 void add_all(svfloat64_t va, svfloat64_t vb) {
   svfloat64_t vc = svadd_f64_z(svptrue_b64(), va, vb);
   printf("va + vb (ALL) = ");
@@ -40,27 +37,33 @@ void add_all(svfloat64_t va, svfloat64_t vb) {
 }
 
 int main() {
+  double a[] = {0, 1, 2, 3, 4, 5, 6, 7};
   svfloat64_t va = svld1_f64(svptrue_b64(), a);
   printf("va = ");
   svshow(va);
+
+  double b[] = {1, 1, 1, 1, 1, 1, 1, 1};
   svfloat64_t vb = svld1_f64(svptrue_b64(), b);
   printf("vb = ");
   svshow(vb);
   printf("\n");
 
-  printf("ALL\n");
+  printf("Add all\n");
+  printf("svadd_f64_z(svptrue_b64(), va, vb)\n");
   svfloat64_t vc1 = svadd_f64_z(svptrue_b64(), va, vb);
   printf("va + vb = ");
   svshow(vc1);
   printf("\n");
 
   printf("pattern VL2 with zero clear\n");
+  printf("svadd_f64_z(svptrue_pat_b64(SV_VL2), va, vb)\n");
   svfloat64_t vc2 = svadd_f64_z(svptrue_pat_b64(SV_VL2), va, vb);
   printf("va + vb = ");
   svshow(vc2);
   printf("\n");
 
   printf("pattern VL2 with merging the first input\n");
+  printf("svadd_f64_m(svptrue_pat_b64(SV_VL2), va, vb)\n");
   svfloat64_t vc3 = svadd_f64_m(svptrue_pat_b64(SV_VL2), va, vb);
   printf("va + vb = ");
   svshow(vc3);
