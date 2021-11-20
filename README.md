@@ -82,13 +82,17 @@ SVEでは、ハードウェアとしてはレジスタの長さを規定する�
 
 本稿では組み込み関数を使う方法でSVEの特徴を概観したあと、Xbyakを使う方法を紹介する。
 
-### 組み込み関数
+### 組み込み関数の概要
 
-TODO:書く
+公式ドキュメントを読んでください(丸投げ)。
+
+[ARM C Language Extensions for SVE](https://developer.arm.com/documentation/100987/latest/)
 
 ### Xbyakの概要
 
-TODO:書く
+公式ドキュメントを読んでください(丸投げ)。
+
+[github.com/herumi/xbyak](https://github.com/herumi/xbyak)
 
 ## ハンズオン編
 
@@ -211,6 +215,140 @@ $ ./a.out
 ちゃんと42が表示された。
 
 ### 組み込み関数
+
+#### プレディケートレジスタ
+
+SVEはSIMD幅を固定しない命令セットであるから、基本的にマスクレジスタを使ったマスク処理を使うことになる。AArch64にはマスク処理のためにプレディケート物理レジスタ(predicator physical register, ppr)が48本用意されており、そのうち16本がユーザから見える(残りはレジスタリネーミングに使われる)。個人的にSVEを使うキモはプレディケートレジスタにあると考える。そこで、まずは組み込み関数を使ってプレディケートレジスタの振る舞いを調べてみよう。
+
+`sample/intrinsic/02_predicate`ディレクトリに、組み込み関数を使ったプレディケートレジスタのサンプル`predicate.cpp`がある。中身を順に見ていこう。
+
+プレディケートレジスタは、最低で1バイト単位(8bit)単位でのマスク処理に使われる。したがって、512ビットアーキテクチャならば、64ビットの情報を持っていることになる。その長さは`svcntb`で取得できる。プレディケートレジスタの中身を表示させる関数`show_pr`は以下のように作ることができる。
+
+```cpp
+void show_pr(svbool_t tp) {
+  int n = svcntb();
+  std::vector<int8_t> a(n);
+  std::vector<int8_t> b(n);
+  std::fill(a.begin(), a.end(), 1);
+  std::fill(b.begin(), b.end(), 0);
+  svint8_t va = svld1_s8(tp, a.data());
+  svst1_s8(tp, b.data(), va);
+  for (int i = 0; i < n; i++) {
+    std::cout << (int)b[n - i - 1];
+  }
+  std::cout << std::endl;
+}
+```
+
+プレディケートレジスタの長さを`svncntb`で取得し、`int8_t`の配列を二つ用意、片方を全て1に、片方を全て0に初期化し、受け取ったプレディケートレジスタを使ってマスクコピーをしている。その結果、コピー先で1になっているところは、プレディケートレジスタが立っていた場所だ、というロジックで可視化している。
+
+プレディケートレジスタのビットのセットの仕方には様々な方法があるが、一番単純なのは「全て1にする」ことだろう。そのために`ptrue`という命令が用意されている。しかし、例えば512ビットのレジスタがあったとして、それを何分割して使うかは、使う値の「型」による。そのため、初期化で立てるべきビットの位置も「型」に依存する。それを見てみよう。
+
+組み込み関数の名前は概ね「sv+アセンブリ命令_型情報」となっている。プレディケートレジスタを全てtrueで初期化するアセンブリは`PTRUE`なので、対応する組み込み関数は`svptrue_型`となる。例えば8ビットなら`svprue_b8`、16ビットなら`svptrue_b16`等になる。それぞれで初期化したプレディケートレジスタを表示させてみよう。コードはこんな感じになる。
+
+```cpp
+void ptrue() {
+  std::cout << "# pture samples for various types" << std::endl;
+  std::cout << "svptrue_b8" << std::endl;
+  show_pr(svptrue_b8());
+  std::cout << "svptrue_b16" << std::endl;
+  show_pr(svptrue_b16());
+  std::cout << "svptrue_b32" << std::endl;
+  show_pr(svptrue_b32());
+  std::cout << "svptrue_b64" << std::endl;
+  show_pr(svptrue_b64());
+}
+```
+
+実行結果はこうなる。
+
+```txt
+# pture samples for various types
+svptrue_b8
+1111111111111111111111111111111111111111111111111111111111111111
+svptrue_b16
+0101010101010101010101010101010101010101010101010101010101010101
+svptrue_b32
+0001000100010001000100010001000100010001000100010001000100010001
+svptrue_b64
+0000000100000001000000010000000100000001000000010000000100000001
+```
+
+`svptrue_b8`が64ビット全てを立ているのに対して、`svptrue_b16`が2つに1つを、`svptrue_b32`が4つに1つを立てているのがわかる。
+
+プレディケートレジスタの立て方には「パターン」を与えることができる。先ほどの`svptrue_b8()`という関数は、実は`svptrue_pat_b8`という関数の引数に`SV_ALL`を与えた場合と等価であり、対応するアセンブリは
+
+```txt
+ptrue p0.b, ALL
+```
+
+になる。`ptrue`が命令、`p0`がプレディケートレジスタで、`p0.b`は、バイト単位で使うという意味、`ALL`は与えるパターンだ。プレディケートレジスタへのパターンの与え方は様々なものがあるが、例えば`VL1`は「一番下を1つだけ立てる」、`VL2`は「一番したから2つ立てる」という意味になる。やってみよう。
+
+```cpp
+void ptrue_pat() {
+  std::cout << "# pture_pat samples for vrious patterns" << std::endl;
+  std::cout << "svptrue_pat_b8(SV_ALL)" << std::endl;
+  show_pr(svptrue_pat_b8(SV_ALL));
+  std::cout << "svptrue_pat_b8(SV_VL1)" << std::endl;
+  show_pr(svptrue_pat_b8(SV_VL1));
+  std::cout << "svptrue_pat_b8(SV_VL2)" << std::endl;
+  show_pr(svptrue_pat_b8(SV_VL2));
+  std::cout << "svptrue_pat_b8(SV_VL3)" << std::endl;
+  show_pr(svptrue_pat_b8(SV_VL3));
+  std::cout << "svptrue_pat_b8(SV_VL4)" << std::endl;
+  show_pr(svptrue_pat_b8(SV_VL4));
+}
+```
+
+実行結果は以下の通り。
+
+```txt
+# pture_pat samples for vrious patterns
+svptrue_pat_b8(SV_ALL)
+1111111111111111111111111111111111111111111111111111111111111111
+svptrue_pat_b8(SV_VL1)
+0000000000000000000000000000000000000000000000000000000000000001
+svptrue_pat_b8(SV_VL2)
+0000000000000000000000000000000000000000000000000000000000000011
+svptrue_pat_b8(SV_VL3)
+0000000000000000000000000000000000000000000000000000000000000111
+svptrue_pat_b8(SV_VL4)
+0000000000000000000000000000000000000000000000000000000000001111
+```
+
+`SV_ALL`が全てを、`SV_VL`*X*が「下から*X*ビット立てる」という意味になっている。
+
+この「下から*X*ビット立てる」時に、どこを立てるかは型に依存する。`SV_VL2`をいろんな型に与えて試してみよう。
+
+```cpp
+void ptrue_pat_types() {
+  std::cout << "# pture_pat samples for various types" << std::endl;
+  std::cout << "svptrue_pat_b8(SV_VL2)" << std::endl;
+  show_pr(svptrue_pat_b8(SV_VL2));
+  std::cout << "svptrue_pat_b16(SV_VL2)" << std::endl;
+  show_pr(svptrue_pat_b16(SV_VL2));
+  std::cout << "svptrue_pat_b32(SV_VL2)" << std::endl;
+  show_pr(svptrue_pat_b32(SV_VL2));
+  std::cout << "svptrue_pat_b64(SV_VL2)" << std::endl;
+  show_pr(svptrue_pat_b64(SV_VL2));
+}
+```
+
+実行結果は以下の通り。
+
+```txt
+# pture_pat samples for various types
+svptrue_pat_b8(SV_VL2)
+0000000000000000000000000000000000000000000000000000000000000011
+svptrue_pat_b16(SV_VL2)
+0000000000000000000000000000000000000000000000000000000000000101
+svptrue_pat_b32(SV_VL2)
+0000000000000000000000000000000000000000000000000000000000010001
+svptrue_pat_b64(SV_VL2)
+0000000000000000000000000000000000000000000000000000000100000001
+```
+
+コードは`make`でビルド、`make run`で実行できるが、`make run128`とすると、レジスタが128ビットの場合の実行結果が、`make run256`とすると、256ビットの時の実行結果を得ることができる。
 
 ### Xbyak_aarch64
 
