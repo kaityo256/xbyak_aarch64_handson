@@ -3,7 +3,7 @@ CC=aarch64-linux-gnu-g++
 CPPFLAGS=-static -march=armv8-a+sve -O2
 
 a.out: sve_length.cpp
-	 $(CC) $(CPPFLAGS) sve_length.cpp
+	 $(CC) $(CPPFLAGS) $<
 
 
 run:
