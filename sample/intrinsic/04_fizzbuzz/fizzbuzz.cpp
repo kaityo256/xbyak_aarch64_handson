@@ -27,32 +27,49 @@ void svshow(svint32_t va){
   printf("\n");
 }
 
+const int n = 64;
+
 int main() {
-  int32_t a[] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16};
-  svint32_t va = svld1_s32(svptrue_b32(), a);
-  printf("va = ");
-  svshow(va);
+  std::vector<int32_t> a(n);
+  for(int i=0;i<n;i++){
+    a[i] = i+1;
+  }
 
-  svbool_t tp = svptrue_b32();
+  int w = svcntw();
+  int s = 0;
+  while (s + w <= n){
+    svint32_t va = svld1_s32(svptrue_b32(), a.data()+s);
 
-  svint32_t vf = svdup_n_s32_x(tp, -1);
-  svint32_t vb = svdup_n_s32_x(tp, -2);
-  svint32_t vfb = svdup_n_s32_x(tp, -3);
+    svbool_t tp = svptrue_b32();
 
-  svint32_t v3= svdup_n_s32_x(tp, 3);
-  svint32_t v5= svdup_n_s32_x(tp, 5);
-  svint32_t v15= svdup_n_s32_x(tp, 15);
+    svint32_t vf = svdup_n_s32_x(tp, -1);
+    svint32_t vb = svdup_n_s32_x(tp, -2);
+    svint32_t vfb = svdup_n_s32_x(tp, -3);
 
-  svint32_t vr = svdiv_s32_z(tp, va, v3);
-  vr= svmul_s32_z(tp, vr, v3);
-  svbool_t pg= svcmpeq_s32(tp, va, vr);
-  svshow(vr);
-  show_pr(svptrue_b32());
-  show_pr(pg);
-  svst1_s32(pg, a, vf);
+    svint32_t v3= svdup_n_s32_x(tp, 3);
+    svint32_t v5= svdup_n_s32_x(tp, 5);
+    svint32_t v15= svdup_n_s32_x(tp, 15);
 
+    svint32_t vr;
+    svbool_t pg;
+    vr = svdiv_s32_z(tp, va, v3);
+    vr = svmul_s32_z(tp, vr, v3);
+    pg = svcmpeq_s32(tp, va, vr);
+    svst1_s32(pg, a.data()+s, vf);
 
-  for(int i=0;i<16;i++){
+    vr = svdiv_s32_z(tp, va, v5);
+    vr = svmul_s32_z(tp, vr, v5);
+    pg= svcmpeq_s32(tp, va, vr);
+    svst1_s32(pg, a.data()+s, vb);
+
+    vr = svdiv_s32_z(tp, va, v15);
+    vr = svmul_s32_z(tp, vr, v15);
+    pg= svcmpeq_s32(tp, va, vr);
+    svst1_s32(pg, a.data()+s, vfb);
+    s += w;
+  }
+
+  for(int i=0;i<n;i++){
     printf("%+03d ", a[i]);
   }
   printf("\n");
