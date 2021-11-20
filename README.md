@@ -630,6 +630,65 @@ int main() {
 
 実行結果は「7.000000」となるはずだ。
 
+### ダンプの確認
+
+Xbyakは、メモリ上にアセンブリ命令を置いて行って、その先頭アドレスから実行する仕組みだ。どのようなアセンブリ命令を置くかは、どのようなプログラムを組んだかによる。したがって、我々が組んでいるのは「アセンブリを出力するC/C++プログラム」、すなわちコードジェネレータである。
+
+コードジェネレータにバグがあった場合、出力されたアセンブリを見ながらデバッグをしたい。そこで、Xbyakが生成したコードを逆アセンブルする方法を紹介する。サンプルコードは`sample/xbyak/03_dump/dump.cpp`だ。
+
+まず、適当なコードを生成するXbyakのコードを作る。
+
+```cpp
+#include <cstdio>
+#include <xbyak_aarch64/xbyak_aarch64.h>
+
+struct Code : Xbyak_aarch64::CodeGenerator {
+  Code() {
+    mov(w0, 1);
+    ret();
+  }
+};
+```
+
+これは、
+
+```cpp
+int f(){
+  return 1;
+}
+```
+
+に対応するアセンブリを生成するXbyakコードだ。実際に生成された機械語を取得するには`Xbyak_aarch64::CodeGenerator::getCode()`を用いれば良い。また、機械語の長さは`getSize()`で取得できる。しかし、取得できるのは機械語(バイナリ)であるため、それを16進表記にする関数を作ってやろう。
+
+```cpp
+void dump(const uint8_t *b, int len) {
+  for (int i = 0; i < len; i++) {
+    printf("%02x", (int)b[i]);
+  }
+  printf("\n");
+}
+```
+
+以上を使って、Xbyakが作ったコードの16進数コードを吐くプログラムはこう書ける。
+
+```cpp
+int main() {
+  Code c;
+  auto f = c.getCode<int (*)()>();
+  c.ready();
+  dump(c.getCode(), c.getSize());
+}
+```
+
+実行してみよう。
+
+
+
+```sh
+echo 20008052c0035fd6 | xxd -r -p > /tmp/dump
+aarch64-linux-gnu-objdump -D -maarch64 -b binary -d /tmp/dump
+```
+
 ## Dockerfileについて
 
 Dockerfileの中身について簡単に説明しておく。

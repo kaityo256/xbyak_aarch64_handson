@@ -8,13 +8,12 @@ struct Code : Xbyak_aarch64::CodeGenerator {
   }
 };
 
-void dump(const uint8_t *b, int len){
-  for(int i=0;i<len;i++){
-    printf("%02x",(int)b[i]);
+void dump(const uint8_t *b, int len) {
+  for (int i = 0; i < len; i++) {
+    printf("%02x", (int)b[i]);
   }
   printf("\n");
 }
-
 
 int main() {
   Code c;
