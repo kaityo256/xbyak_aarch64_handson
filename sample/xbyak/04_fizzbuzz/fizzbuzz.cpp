@@ -1,7 +1,7 @@
+#include <arm_sve.h>
 #include <cstdio>
 #include <vector>
 #include <xbyak_aarch64/xbyak_aarch64.h>
-#include <arm_sve.h>
 
 struct Cntw : Xbyak_aarch64::CodeGenerator {
   Cntw() {
@@ -9,7 +9,6 @@ struct Cntw : Xbyak_aarch64::CodeGenerator {
     ret();
   }
 };
-
 
 /*
  p0 : all true
@@ -32,7 +31,7 @@ struct Code : Xbyak_aarch64::CodeGenerator {
     dup(z3.s, -3);
     dup(z4.s, 3);
     dup(z5.s, 5);
-    for (int i = 0; i < n/nw; i++) {
+    for (int i = 0; i < n / nw; i++) {
       ld1w(z0.s, p0, ptr(x0));
       // Fizz
       // b[i] = (a[i] / 3) * 3
@@ -59,7 +58,7 @@ struct Code : Xbyak_aarch64::CodeGenerator {
       // Write -3
       st1w(z3.s, p3, ptr(x0));
 
-      adds(x0, x0, nw*4);
+      adds(x0, x0, nw * 4);
     }
 
     ret();
@@ -74,7 +73,7 @@ int main() {
   int n = 32;
   Cntw cw;
   int nw = cw.getCode<int (*)()>()();
-  printf("Number of int32_t in a register is %d.\n",nw);
+  printf("Number of int32_t in a register is %d.\n", nw);
   std::vector<int32_t> a(n);
   for (int i = 0; i < n; i++) {
     a[i] = i + 1;

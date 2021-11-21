@@ -18,5 +18,5 @@ int main() {
   auto f = c.getCode<int (*)(int)>();
   c.ready();
   c.dump("xbyak.dump");
-  printf("%d\n",f(10));
+  printf("%d\n", f(10));
 }

@@ -4,13 +4,13 @@
 #endif
 
 int main() {
-	int n = 0;
+  int n = 0;
 #ifdef __ARM_FEATURE_SVE
-	n = svcntb() * 8;
+  n = svcntb() * 8;
 #endif
-	if (n) {
-		printf("SVE is available. The length is %d bits\n", n);
-	} else {
-		printf("SVE is unavailable.\n");
-	}
+  if (n) {
+    printf("SVE is available. The length is %d bits\n", n);
+  } else {
+    printf("SVE is unavailable.\n");
+  }
 }

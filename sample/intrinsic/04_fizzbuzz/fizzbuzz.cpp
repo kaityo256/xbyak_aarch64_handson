@@ -16,29 +16,28 @@ void show_pr(svbool_t tp) {
   std::cout << std::endl;
 }
 
-void svshow(svint32_t va){
+void svshow(svint32_t va) {
   int n = svcntw();
   std::vector<int32_t> a(n);
   svbool_t tp = svptrue_b32();
   svst1_s32(tp, a.data(), va);
-  for(int i=0;i<n;i++){
-    printf("%+03d ", a[n-i-1]);
+  for (int i = 0; i < n; i++) {
+    printf("%+03d ", a[n - i - 1]);
   }
   printf("\n");
 }
 
-
 int main() {
   const int n = 32;
   std::vector<int32_t> a(n);
-  for(int i=0;i<n;i++){
-    a[i] = i+1;
+  for (int i = 0; i < n; i++) {
+    a[i] = i + 1;
   }
 
   int w = svcntw();
   int s = 0;
-  while (s + w <= n){
-    svint32_t va = svld1_s32(svptrue_b32(), a.data()+s);
+  while (s + w <= n) {
+    svint32_t va = svld1_s32(svptrue_b32(), a.data() + s);
 
     svbool_t tp = svptrue_b32();
 
@@ -46,38 +45,38 @@ int main() {
     svint32_t vb = svdup_n_s32_x(tp, -2);
     svint32_t vfb = svdup_n_s32_x(tp, -3);
 
-    svint32_t v3= svdup_n_s32_x(tp, 3);
-    svint32_t v5= svdup_n_s32_x(tp, 5);
-    svint32_t v15= svdup_n_s32_x(tp, 15);
+    svint32_t v3 = svdup_n_s32_x(tp, 3);
+    svint32_t v5 = svdup_n_s32_x(tp, 5);
+    svint32_t v15 = svdup_n_s32_x(tp, 15);
 
     svint32_t vr;
     svbool_t pg;
     vr = svdiv_s32_z(tp, va, v3);
     vr = svmul_s32_z(tp, vr, v3);
     pg = svcmpeq_s32(tp, va, vr);
-    svst1_s32(pg, a.data()+s, vf);
+    svst1_s32(pg, a.data() + s, vf);
 
     vr = svdiv_s32_z(tp, va, v5);
     vr = svmul_s32_z(tp, vr, v5);
-    pg= svcmpeq_s32(tp, va, vr);
-    svst1_s32(pg, a.data()+s, vb);
+    pg = svcmpeq_s32(tp, va, vr);
+    svst1_s32(pg, a.data() + s, vb);
 
     vr = svdiv_s32_z(tp, va, v15);
     vr = svmul_s32_z(tp, vr, v15);
-    pg= svcmpeq_s32(tp, va, vr);
-    svst1_s32(pg, a.data()+s, vfb);
+    pg = svcmpeq_s32(tp, va, vr);
+    svst1_s32(pg, a.data() + s, vfb);
     s += w;
   }
 
-  for(int i=0;i<n;i++){
-    if(a[i] == -1){
+  for (int i = 0; i < n; i++) {
+    if (a[i] == -1) {
       puts("Fizz");
-    }else if(a[i] == -2){
+    } else if (a[i] == -2) {
       puts("Buzz");
-    }else if(a[i] == -3) {
+    } else if (a[i] == -3) {
       puts("FizzBuzz");
-    }else{
-      printf("%d\n",a[i]);
+    } else {
+      printf("%d\n", a[i]);
     }
   }
 }
