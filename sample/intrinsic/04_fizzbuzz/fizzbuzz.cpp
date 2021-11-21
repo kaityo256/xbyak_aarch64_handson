@@ -73,4 +73,12 @@ int main() {
     printf("%+03d ", a[i]);
   }
   printf("\n");
+
+  //svbool_t p1 = svptrue_b8();
+  svbool_t p1 = svptrue_pat_b8(SV_VL6);
+  show_pr(p1);
+  svbool_t p2 = svptrue_pat_b8(SV_VL2);
+  show_pr(p2);
+  show_pr(svand_b_z(svptrue_b8(),p1,p2));
+  show_pr(svorr_b_z(svptrue_b8(),p1,p2));
 }
