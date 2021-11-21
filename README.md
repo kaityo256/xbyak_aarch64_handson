@@ -636,7 +636,7 @@ Xbyakは、メモリ上にアセンブリ命令を置いて行って、その先
 
 コードジェネレータにバグがあった場合、出力されたアセンブリを見ながらデバッグをしたい。そこで、Xbyakが生成したコードを逆アセンブルする方法を紹介する。サンプルコードは`sample/xbyak/03_dump/dump.cpp`だ。
 
-まず、適当なコードを生成するXbyakのコードを作る。
+Xbyakにより生成された機械語を取得するには`Xbyak_aarch64::CodeGenerator::getCode()`を用いれば良い。また、機械語の長さは`getSize()`で取得できる。これを、名前をつけて保存をするメソッドを作っておこう。適当なコードを作成するXbyakのコードに、機械語保存用のメソッドを追加しておく。
 
 ```cpp
 #include <cstdio>
@@ -646,6 +646,10 @@ struct Code : Xbyak_aarch64::CodeGenerator {
   Code() {
     mov(w0, 1);
     ret();
+  }
+  void dump(const char *filename) {
+    FILE *fp = fopen(filename, "wb");
+    fwrite(getCode(), 1, getSize(), fp);
   }
 };
 ```
@@ -658,28 +662,18 @@ int f(int n){
 }
 ```
 
-に対応するアセンブリを生成するXbyakコードだ。いまは引数は使わないが、後のために`int`型の引数を受ける型にしておく。実際に生成された機械語を取得するには`Xbyak_aarch64::CodeGenerator::getCode()`を用いれば良い。また、機械語の長さは`getSize()`で取得できる。しかし、取得できるのは機械語(バイナリ)であるため、それを16進表記にする関数を作ってやろう。
+に対応するアセンブリを生成するXbyakコードだ。いまは引数は使わないが、後のために`int`型の引数を受ける型にしておく。`void dump(const char *filename)`は、Xbyakが作成した機械語を名前をつけて保存するコードだ。
 
-```cpp
-void dump(const uint8_t *b, int len) {
-  for (int i = 0; i < len; i++) {
-    printf("%02x", (int)b[i]);
-  }
-  printf("\n");
-}
-```
-
-以上を使って、Xbyakが作ったコードの16進数コードを吐くプログラムはこう書ける。
+Xbyakのコードを実行しつつ、その機械語も保存するコードは以下のように書ける。
 
 ```cpp
 int main() {
   Code c;
   auto f = c.getCode<int (*)(int)>();
   c.ready();
-  printf("%d\n", f(10));
-  dump(c.getCode(), c.getSize());
-}
-```
+  c.dump("xbyak.dump");
+  printf("%d\n",f(10));
+}```
 
 実行してみよう。
 
@@ -687,16 +681,14 @@ int main() {
 $ make
 $ ./a.out
 1
-20008052c0035fd6
 ```
 
-最初の`1`がXbyakが生成した関数の実行結果だ。引数を無視して1を返す関数になっている。次に出力される`20008052c0035fd6`がXbyakが生成した機械語の16進表記だ。これをバイナリに直して、objdumpに食わせればアセンブリを見ることができる。
+最初の`1`がXbyakが生成した関数の実行結果だ。引数を無視して1を返す関数になっている。Xbyakが生成した機械語は`xbyak.dump`という名前で保存されている。`objdump`に渡せば逆アセンブルできるが、ヘッダ情報がないために情報を教えてやる必要がある。
 
 ```sh
-$ echo 20008052c0035fd6 | xxd -r -p > /tmp/dump
-$ aarch64-linux-gnu-objdump -D -maarch64 -b binary -d /tmp/dump
+$ aarch64-linux-gnu-objdump -D -maarch64 -b binary -d xbyak.dump
 
-/tmp/dump:     file format binary
+xbyak.dump:     file format binary
 
 
 Disassembly of section .data:
@@ -706,27 +698,16 @@ Disassembly of section .data:
    4:   d65f03c0        ret
 ```
 
-意図の通り、`mov w0, 1; ret`しているコードが生成されている。いちいち`xxd`を通して`objdump`に渡すのは面倒なので、以下の関数が`.bashrc`に定義されている。
+意図の通り、`mov w0, 1; ret`しているコードが生成されている。いちいち`aarch64-linux-gnu-objdump -D -maarch64 -b binary -d`と入力するのは面倒なので、以下のaliasが`.bashrc`に定義されている。
 
 ```sh
-function dump (){
-echo $1 | xxd -r -p > /tmp/dump;aarch64-linux-gnu-objdump -D -maarch64 -b binary -d /tmp/dump
-}
+alias xdump="aarch64-linux-gnu-objdump -D -maarch64 -b binary -d"
 ```
 
-以下のように使えて便利だ。
+以下のように使うことができる。
 
 ```sh
-$ dump 20008052c0035fd6
-
-/tmp/dump:     file format binary
-
-
-Disassembly of section .data:
-
-0000000000000000 <.data>:
-   0:   52800020        mov     w0, #0x1                        // #1
-   4:   d65f03c0        ret
+xdump xbyak.dump
 ```
 
 さて、Xbyakがコードを動的に生成する様を見てみよう。引数を無視していた関数を、`n`回1を加算して返す関数に修正する。
@@ -760,15 +741,14 @@ int main() {
 $ make
 $ ./a.out
 13
-000400110004001100040011c0035fd6
 ```
 
-実行結果として、10に三回1を足された13が表示された。また、Xbyakが生成したコードが`000400110004001100040011c0035fd6`になった。逆アセンブルしてみよう。
+実行結果として、10に三回1を足された13が表示された。逆アセンブルしてみよう。
 
 ```sh
-$ dump 000400110004001100040011c0035fd6
+$ xdump xbyak.dump
 
-/tmp/dump:     file format binary
+xbyak.dump:     file format binary
 
 
 Disassembly of section .data:
@@ -792,23 +772,15 @@ int main(int argc, char **argv) { // コマンドライン引数の受け取り
 }
 ```
 
-実行してみよう。
+実行し、逆アセンブルしてみよう。
 
 ```sh
-$ ./a.out 1
-11
-00040011c0035fd6
-$ ./a.out 2
-12
-0004001100040011c0035fd6
-```
+$ ./a.out  5
+15
 
-引数ごとに異なる機械語が出力されている。逆アセしてみると、その回数だけ`add`が繰り返されていることがわかる。
+$ xdump xbyak.dump
 
-```sh
-$ dump 0004001100040011c0035fd6
-
-/tmp/dump:     file format binary
+xbyak.dump:     file format binary
 
 
 Disassembly of section .data:
@@ -816,7 +788,10 @@ Disassembly of section .data:
 0000000000000000 <.data>:
    0:   11000400        add     w0, w0, #0x1
    4:   11000400        add     w0, w0, #0x1
-   8:   d65f03c0        ret
+   8:   11000400        add     w0, w0, #0x1
+   c:   11000400        add     w0, w0, #0x1
+  10:   11000400        add     w0, w0, #0x1
+  14:   d65f03c0        ret
 ```
 
 Xbyakが動的にコードを生成しているのがわかったかと思う。
