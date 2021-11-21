@@ -1,6 +1,15 @@
 #include <cstdio>
 #include <vector>
 #include <xbyak_aarch64/xbyak_aarch64.h>
+#include <arm_sve.h>
+
+struct Cntw : Xbyak_aarch64::CodeGenerator {
+  Cntw() {
+    cntw(x0);
+    ret();
+  }
+};
+
 
 /*
  p0 : all true
@@ -16,15 +25,14 @@
  */
 
 struct Code : Xbyak_aarch64::CodeGenerator {
-  Code(int n) {
+  Code(int n, int nw) {
     ptrue(p0.s);
     dup(z1.s, -1);
     dup(z2.s, -2);
     dup(z3.s, -3);
     dup(z4.s, 3);
     dup(z5.s, 5);
-    for (int i = 0; i < n / 16; i++) {
-      adds(x0, x0, i * 64);
+    for (int i = 0; i < n/nw; i++) {
       ld1w(z0.s, p0, ptr(x0));
       // Fizz
       // b[i] = (a[i] / 3) * 3
@@ -50,6 +58,8 @@ struct Code : Xbyak_aarch64::CodeGenerator {
       and_(p3.b, p0, p1.b, p2.b);
       // Write -3
       st1w(z3.s, p3, ptr(x0));
+
+      adds(x0, x0, nw*4);
     }
 
     ret();
@@ -62,11 +72,14 @@ struct Code : Xbyak_aarch64::CodeGenerator {
 
 int main() {
   int n = 32;
+  Cntw cw;
+  int nw = cw.getCode<int (*)()>()();
+  printf("Number of int32_t in a register is %d.\n",nw);
   std::vector<int32_t> a(n);
   for (int i = 0; i < n; i++) {
     a[i] = i + 1;
   }
-  Code c(n);
+  Code c(n, nw);
   auto f = c.getCode<void (*)(int32_t *)>();
   c.ready();
   c.dump("xbyak.dump");
