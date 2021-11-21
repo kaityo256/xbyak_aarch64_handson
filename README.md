@@ -84,13 +84,28 @@ SVEでは、ハードウェアとしてはレジスタの長さを規定する�
 
 ### 組み込み関数の概要
 
-公式ドキュメントを読んでください(丸投げ)。
+組み込み関数は、機械語と一体一対応した関数を呼び出すことで所望のアセンブリを入力する方法だ。SVEを使いたい場合は、バージョンが新しいGCCならARMの組み込み関数に対応しており、`arm_sve.h`をインクルードすることで使えるようになる。また、レジスタに対応した組み込み型も使えるようになる。
+
+アセンブリと一体一対応している以上、組み込み関数を用いたプログラミングはほぼアセンブリを組む感覚と同じだが、フルアセンブリで組む場合に比べて以下のメリットがある。
+
+* 関数呼び出しの規約を気にしなくて良い。関数の中に記述できるため、引数の処理などはC/C++と同様にできる。
+* アドレッシングを気にしなくて良い。グローバル変数もローカル変数も定数も全て同じように使うことができる。
+* レジスタの割り当てを気にしなくてよい。組み込み型を使うと、コンパイラはなるべく効率良く対応するレジスタを割り当てようとする。したがって、「ここでz6を使ったから、いまはz7を使って・・・」などと考えなくて良い。また、レジスタが足りなくなった場合のスピルもコンパイラがやってくれる
+* 最適化がかかる余地がある。フルアセンブリで組んだら組んだ通りにしか動かないが、組み込み関数でかけば、その範囲でコンパイラが最適化をかけてくれる。
+
+ただし、組み込み関数が対応していない命令があったり、コンパイラの最適化が仇となる場合もあるので注意。
+
+後は公式ドキュメントを読んでください(丸投げ)。
 
 [ARM C Language Extensions for SVE](https://developer.arm.com/documentation/100987/latest/)
 
 ### Xbyakの概要
 
-公式ドキュメントを読んでください(丸投げ)。
+Xbyakも、基本的にはアセンブリと一体一対応した命令を使ってプログラムを組み立てる。しかし、組み込み関数やインラインアセンブラが、コードを静的に実行ファイルに吐くのに対して、Xbyakで組んだコードはプログラム実行時に確保されたメモリに詰まれ、そこを関数のように呼び出すことで実行される。これにより、Xbyakは「コンパイル時には確定していないが、実行時にはわかっている情報」を使ってコードを生成することができる(JITと呼ばれる所以である)。
+
+Xbyakを使ったコーディングは、関数単位でフルアセンブリで組む感覚となる。したがって、関数の呼び出し規約や、アドレッシングの知識が必要になる。また、Xbyakはコードジェネレータなので、コードを使ってコードを組むことになるが、慣れていないと戸惑うかもしれない。
+
+後は公式ドキュメントを読んでください(丸投げ)。
 
 [github.com/herumi/xbyak](https://github.com/herumi/xbyak)
 
@@ -630,7 +645,7 @@ int main() {
 
 実行結果は「7.000000」となるはずだ。
 
-### ダンプの確認
+#### ダンプの確認
 
 Xbyakは、メモリ上にアセンブリ命令を置いて行って、その先頭アドレスから実行する仕組みだ。どのようなアセンブリ命令を置くかは、どのようなプログラムを組んだかによる。したがって、我々が組んでいるのは「アセンブリを出力するC/C++プログラム」、すなわちコードジェネレータである。
 
@@ -796,7 +811,7 @@ Disassembly of section .data:
 
 Xbyakが動的にコードを生成しているのがわかったかと思う。
 
-### XbyakでFizzBuzz
+#### XbyakでFizzBuzz
 
 最後に、あまり実用的ではないがもう少し非自明な例として、XbyakでFizzBuzzをやってみよう。せっかくなので、SVEを使って一気に処理することを考える。`int32_t`型の整数を格納した配列に対して、3の倍数なら-1を、5の倍数なら-2を、15の倍数なら-3を書き込む処理をもって、FizzBuzzを表現する。処理するデータは`int32_t`型の`std::vector`として、その先頭アドレスをXbyakで作る関数の引数として渡す。
 
@@ -1154,19 +1169,20 @@ WORKDIR /home/${USER}
 RUN echo 'alias vi=vim' >> /home/${USER}/.bashrc
 RUN echo 'alias ag++="aarch64-linux-gnu-g++ -static -march=armv8-a+sve -O2"' >> /home/${USER}/.bashrc
 RUN echo 'alias gp="git push https://${GIT_USER}:${GIT_TOKEN}@github.com/${GIT_REPOSITORY}"' >> /home/${USER}/.bashrc
+RUN echo 'alias xdump="aarch64-linux-gnu-objdump -D -maarch64 -b binary -d"' >> /home/${USER}/.bashrc
 RUN echo 'export CPLUS_INCLUDE_PATH=/home/user/xbyak_aarch64_handson/xbyak_aarch64' >> /home/${USER}/.bashrc
 COPY dot.vimrc /home/${USER}/.vimrc
 COPY dot.gitconfig /home/${USER}/.gitconfig
 ```
 
-開発に必要な設定。特にクロスコンパイラはコマンドも長いしオプションも長いので、`ag++`にエイリアスを設定してある。`CPLUS_INCLUDE_PATH`にXbyakのヘッダを探すパスを設定している。`gp`はDocker内部から`git push`するための設定なので無視してかまわない。Vimの設定にこだわりがある人は`dot.vimrc`を修正すれば、コンテナの中に持ち込むことができる。`emacs`が使いたい人は適宜`Dockerfile`を書き換えるなり、`su -`してから`pacman -S --noconfirm emacs`すること。
+開発に必要な設定。クロスコンパイラまわりはコマンドも長いしオプションも長いので、コンパイルコマンドは`ag++`、`objdump`は`xdump`としてエイリアスを設定してある。`CPLUS_INCLUDE_PATH`にXbyakのヘッダを探すパスを設定している。`gp`はDocker内部から`git push`するための設定なので無視してかまわない。Vimの設定にこだわりがある人は`dot.vimrc`を修正すれば、コンテナの中に持ち込むことができる。`emacs`が使いたい人は適宜`Dockerfile`を書き換えるなり、`su -`してから`pacman -S --noconfirm emacs`すること。
 
 ```Dockerfile
 RUN git clone --recursive https://github.com/kaityo256/xbyak_aarch64_handson.git
 RUN cd xbyak_aarch64_handson/xbyak_aarch64;make
 ```
 
-最後に、コンテナ内でこのリポジトリをクローンしている。サブモジュールとしてxbyak_aarch64を登録しているので、`--recursive`オプションをつけている。そして、`libxbyak_aarch64.a`をビルドするために`make`している。
+最後に、コンテナ内でこのリポジトリをクローンしている。サブモジュールとしてxbyak_aarch64を登録しているので、`--recursive`オプションをつけている。そして、`libxbyak_aarch64.a`をビルドするために`make`している。イメージをビルドした後にリポジトリが更新されてもDockerによりキャッシュされてイメージには反映されないた。最新版に更新するには`docker run`でコンテナの中に入ってから`git pull`すれば良い。
 
 ## Licence
 

@@ -29,10 +29,10 @@ WORKDIR /home/${USER}
 RUN echo 'alias vi=vim' >> /home/${USER}/.bashrc
 RUN echo 'alias ag++="aarch64-linux-gnu-g++ -static -march=armv8-a+sve -O2"' >> /home/${USER}/.bashrc
 RUN echo 'alias gp="git push https://${GIT_USER}:${GIT_TOKEN}@github.com/${GIT_REPOSITORY}"' >> /home/${USER}/.bashrc
+RUN echo 'alias xdump="aarch64-linux-gnu-objdump -D -maarch64 -b binary -d"' >> /home/${USER}/.bashrc
 RUN echo 'export CPLUS_INCLUDE_PATH=/home/user/xbyak_aarch64_handson/xbyak_aarch64' >> /home/${USER}/.bashrc
 COPY dot.vimrc /home/${USER}/.vimrc
 COPY dot.gitconfig /home/${USER}/.gitconfig
 
 RUN git clone --recursive https://github.com/kaityo256/xbyak_aarch64_handson.git
 RUN cd xbyak_aarch64_handson/xbyak_aarch64;make
-RUN echo 'alias xdump="aarch64-linux-gnu-objdump -D -maarch64 -b binary -d"' >> /home/${USER}/.bashrc
