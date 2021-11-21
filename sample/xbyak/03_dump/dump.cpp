@@ -6,18 +6,17 @@ struct Code : Xbyak_aarch64::CodeGenerator {
     mov(w0, 1);
     ret();
   }
-};
 
-void dump(const uint8_t *b, int len) {
-  for (int i = 0; i < len; i++) {
-    printf("%02x", (int)b[i]);
+  void dump(const char *filename) {
+    FILE *fp = fopen(filename, "wb");
+    fwrite(getCode(), 1, getSize(), fp);
   }
-  printf("\n");
-}
+};
 
 int main() {
   Code c;
-  auto f = c.getCode<int (*)()>();
+  auto f = c.getCode<int (*)(int)>();
   c.ready();
-  dump(c.getCode(), c.getSize());
+  c.dump("xbyak.dump");
+  printf("%d\n",f(10));
 }
