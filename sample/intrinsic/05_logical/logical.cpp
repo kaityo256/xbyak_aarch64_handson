@@ -18,10 +18,11 @@ void show_pr(svbool_t tp) {
 }
 
 int main() {
-  std::vector<int8_t> a1(64), a2(64);
+  int n = svcntb();
+  std::vector<int8_t> a1(n), a2(n);
   std::mt19937 mt(1);
   std::uniform_int_distribution<> ud(0,1);
-  for(int i=0;i<64;i++){
+  for(int i=0;i<n;i++){
     a1[i] = ud(mt);
     a2[i] = ud(mt);
   }
