@@ -25,7 +25,7 @@ struct Code : Xbyak_aarch64::CodeGenerator {
     for (int i = 0; i < n/16;i++){
     adds(x0, x0, i*64);
     ld1w(z0.s, p0, ptr(x0));
-        //Fizz
+    //Fizz
     // b[i] = (a[i] / 3) * 3
     mov(z7.s, p0, z0.s);
     sdiv(z7.s, p0.s, z4.s);
@@ -34,7 +34,6 @@ struct Code : Xbyak_aarch64::CodeGenerator {
     cmpeq(p1.s, p0, z0.s, z7.s);
     // Write -1
     st1w(z1.s, p1, ptr(x0));
-
 
     // Buzz
     // b[i] = (a[i] / 5) * 5
