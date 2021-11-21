@@ -823,7 +823,7 @@ Xbyakが動的にコードを生成しているのがわかったかと思う。
 
 ### XbyakでFizzBuzz
 
-最後に、あまり実用的ではないがもう少し非自明な例として、XbyakでFizzBuzzをやってみよう。せっかくなので、SVEを使って一気に処理することを考える。整数を格納した配列に対して、3の倍数なら-1を、5の倍数なら-2を、15の倍数なら-3を書き込む処理をもって、FizzBuzzを表現することにしよう。
+最後に、あまり実用的ではないがもう少し非自明な例として、XbyakでFizzBuzzをやってみよう。せっかくなので、SVEを使って一気に処理することを考える。`int32_t`型の整数を格納した配列に対して、3の倍数なら-1を、5の倍数なら-2を、15の倍数なら-3を書き込む処理をもって、FizzBuzzを表現する。処理するデータは`int32_t`型の`std::vector`として、その先頭アドレスをXbyakで作る関数の引数として渡す。
 
 方針は以下の通り。
 
@@ -841,7 +841,26 @@ Xbyakが動的にコードを生成しているのがわかったかと思う。
 
 ソースコードは`/sample/xbyak/04_fizzbuzz`ディレクトリの`fizzbuzz.cpp`にある。
 
-まず、処理するデータは`int32_t`型の`std::vector`として、その先頭アドレスをXbyakで作る関数の引数として渡すことにしよう。Xbyakで作る関数のシグネチャは、
+最初に、レジスタに`int32_t`型の変数が何個入るかを取得するXbyakのコードを作る。
+
+```cpp
+struct Cntw : Xbyak_aarch64::CodeGenerator {
+  Cntw() {
+    cntw(x0);
+    ret();
+  }
+};
+```
+
+単に`cntw`を呼び出し、`x0`に入れているだけだ。以下のようにして要素数を取得できる。
+
+```cpp
+  Cntw cw;
+  int nw = cw.getCode<int (*)()>()();
+  printf("Number of int32_t in a register is %d.\n",nw);
+```
+
+Xbyakで作るFizzBuzz関数のシグネチャは、
 
 ```cpp
 void f(int32_t *);
@@ -850,28 +869,26 @@ void f(int32_t *);
 とする。そのため、Xbyakの`getCode`での受け方は
 
 ```cpp
-  auto f = c.getCode<void (*)(int32_t *)>();
+auto f = c.getCode<void (*)(int32_t *)>();
 ```
 
 となる。取得した関数は以下のように呼び出す。`a`は`std::vector<int32_t>`型の変数だ。
 
 ```cpp
-  f(a.data());
+f(a.data());
 ```
 
 `a`には正の整数が格納されており、`f`を呼び出すと3の倍数が-1に、5の倍数が-2に、15の倍数が-3に書き換わる。そんな関数`f`を作るXbyakのコードは以下の通り。
 
 ```cpp
-struct Code : Xbyak_aarch64::CodeGenerator {
-  Code(int n) {
+  Code(int n, int nw) {
     ptrue(p0.s);
     dup(z1.s, -1);
     dup(z2.s, -2);
     dup(z3.s, -3);
     dup(z4.s, 3);
     dup(z5.s, 5);
-    for (int i = 0; i < n / 16; i++) {
-      adds(x0, x0, i * 64);
+    for (int i = 0; i < n/nw; i++) {
       ld1w(z0.s, p0, ptr(x0));
       // Fizz
       // b[i] = (a[i] / 3) * 3
@@ -897,7 +914,10 @@ struct Code : Xbyak_aarch64::CodeGenerator {
       and_(p3.b, p0, p1.b, p2.b);
       // Write -3
       st1w(z3.s, p3, ptr(x0));
+
+      adds(x0, x0, nw*4);
     }
+
     ret();
   }
   void dump(const char *filename) {
@@ -909,7 +929,7 @@ struct Code : Xbyak_aarch64::CodeGenerator {
 
 少しずつ説明しよう。
 
-まず、コンストラクタで要素数`n`を受け取り、その分、ループを展開したコードを生成する。この引数はコードジェネレータのための引数であり、Xbyakが作る関数の引数ではないことに注意。
+まず、コンストラクタで要素数`n`と、レジスタあたりの要素数`nw`を受け取り、その分、ループを展開したコードを生成する。これらの引数はコードジェネレータのための引数であり、Xbyakが作る関数の引数ではないことに注意。
 
 最初に使うレジスタの初期化をしておく。
 
@@ -964,6 +984,127 @@ and_(p3.b, p0, p1.b, p2.b);
 ```
 
 `and`は予約語なので、Xbyakは名前を`and_`としているようだ。あとは同様に`-3`を書き戻せばよい。これで1要素分は完了だ。
+
+最後に、読み書きするアドレスが格納されたレジスタ`x0`の値を、レジスタあたりの要素数*4バイト(=`sizeof(int32_t)`)だけずらす。
+
+```cpp
+adds(x0, x0, nw*4);
+```
+
+これを必要な回数だけ繰り返すことで、全ての要素に対する処理が完成する。Xbyakでループを作っても良いが、ここではJITらしく、ループを完全にアンロールしてみた。
+
+コンパイル、実行してみよう。
+
+```sh
+$ make
+$ ./a.out
+$ ./a.out
+Number of int32_t in a register is 16.
+1
+2
+Fizz
+4
+Buzz
+Fizz
+7
+8
+Fizz
+Buzz
+11
+Fizz
+13
+14
+FizzBuzz
+16
+17
+Fizz
+19
+Buzz
+Fizz
+22
+23
+Fizz
+Buzz
+26
+Fizz
+28
+29
+FizzBuzz
+31
+32
+```
+
+できているようだ。Xbyakが吐いたコードも見てみよう。
+
+```sh
+$ xdump xbyak.dump
+
+xbyak.dump:     file format binary
+
+
+Disassembly of section .data:
+
+0000000000000000 <.data>:
+   0:   2598e3e0        ptrue   p0.s
+   4:   25b8dfe1        mov     z1.s, #-1
+   8:   25b8dfc2        mov     z2.s, #-2
+   c:   25b8dfa3        mov     z3.s, #-3
+  10:   25b8c064        mov     z4.s, #3
+  14:   25b8c0a5        mov     z5.s, #5
+  18:   a540a000        ld1w    {z0.s}, p0/z, [x0]
+  1c:   05a7c007        mov     z7.s, p0/m, z0.s
+  20:   04940087        sdiv    z7.s, p0/m, z7.s, z4.s
+  24:   04900087        mul     z7.s, p0/m, z7.s, z4.s
+  28:   2487a001        cmpeq   p1.s, p0/z, z0.s, z7.s
+  2c:   e540e401        st1w    {z1.s}, p1, [x0]
+  30:   05a7c007        mov     z7.s, p0/m, z0.s
+  34:   049400a7        sdiv    z7.s, p0/m, z7.s, z5.s
+  38:   049000a7        mul     z7.s, p0/m, z7.s, z5.s
+  3c:   2487a002        cmpeq   p2.s, p0/z, z0.s, z7.s
+  40:   e540e802        st1w    {z2.s}, p2, [x0]
+  44:   25024023        and     p3.b, p0/z, p1.b, p2.b
+  48:   e540ec03        st1w    {z3.s}, p3, [x0]
+  4c:   b1010000        adds    x0, x0, #0x40
+  50:   a540a000        ld1w    {z0.s}, p0/z, [x0]
+  54:   05a7c007        mov     z7.s, p0/m, z0.s
+  58:   04940087        sdiv    z7.s, p0/m, z7.s, z4.s
+  5c:   04900087        mul     z7.s, p0/m, z7.s, z4.s
+  60:   2487a001        cmpeq   p1.s, p0/z, z0.s, z7.s
+  64:   e540e401        st1w    {z1.s}, p1, [x0]
+  68:   05a7c007        mov     z7.s, p0/m, z0.s
+  6c:   049400a7        sdiv    z7.s, p0/m, z7.s, z5.s
+  70:   049000a7        mul     z7.s, p0/m, z7.s, z5.s
+  74:   2487a002        cmpeq   p2.s, p0/z, z0.s, z7.s
+  78:   e540e802        st1w    {z2.s}, p2, [x0]
+  7c:   25024023        and     p3.b, p0/z, p1.b, p2.b
+  80:   e540ec03        st1w    {z3.s}, p3, [x0]
+  84:   b1010000        adds    x0, x0, #0x40
+  88:   d65f03c0        ret
+```
+
+Xbyakで作ったコードが二倍展開されていることがわかる。
+
+今の結果はレジスタが512ビットの場合の結果だが、レジスタが128ビットの場合や256ビットの場合も試すことができる。
+
+```sh
+$ make run128
+qemu-aarch64 -cpu max,sve128=on ./a.out
+Number of int32_t in a register is 4.
+1
+2
+Fizz
+(snip)
+
+$ make run256
+qemu-aarch64 -cpu max,sve256=on ./a.out
+Number of int32_t in a register is 8.
+1
+2
+Fizz
+(snip)
+```
+
+それぞれ実行した直後に`xbyak.dump`を逆アセンブルしてみると、ループが8倍展開、4倍展開されており、動的にスケーラブル(?)なコードが作成されていることが確認できる。
 
 ## Dockerfileについて
 
