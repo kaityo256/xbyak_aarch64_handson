@@ -27,9 +27,9 @@ void svshow(svint32_t va){
   printf("\n");
 }
 
-const int n = 64;
 
 int main() {
+  const int n = 32;
   std::vector<int32_t> a(n);
   for(int i=0;i<n;i++){
     a[i] = i+1;
@@ -70,15 +70,14 @@ int main() {
   }
 
   for(int i=0;i<n;i++){
-    printf("%+03d ", a[i]);
+    if(a[i] == -1){
+      puts("Fizz");
+    }else if(a[i] == -2){
+      puts("Buzz");
+    }else if(a[i] == -3) {
+      puts("FizzBuzz");
+    }else{
+      printf("%d\n",a[i]);
+    }
   }
-  printf("\n");
-
-  //svbool_t p1 = svptrue_b8();
-  svbool_t p1 = svptrue_pat_b8(SV_VL6);
-  show_pr(p1);
-  svbool_t p2 = svptrue_pat_b8(SV_VL2);
-  show_pr(p2);
-  show_pr(svand_b_z(svptrue_b8(),p1,p2));
-  show_pr(svorr_b_z(svptrue_b8(),p1,p2));
 }
