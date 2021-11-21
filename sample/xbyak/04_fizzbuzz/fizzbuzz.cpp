@@ -41,19 +41,14 @@ struct Code : Xbyak_aarch64::CodeGenerator {
     sdiv(z7.s, p0.s, z5.s);
     mul(z7.s, p0.s, z5.s);
     // Mask
-    cmpeq(p1.s, p0, z0.s, z7.s);
+    cmpeq(p2.s, p0, z0.s, z7.s);
     // Write -2
-    st1w(z2.s, p1, ptr(x0));
+    st1w(z2.s, p2, ptr(x0));
 
     // FizzBuzz
-    // b[i] = (a[i] / 15) * 15
-    mov(z7.s, p0, z0.s);
-    sdiv(z7.s, p0.s, z6.s);
-    mul(z7.s, p0.s, z6.s);
-    // Mask
-    cmpeq(p1.s, p0, z0.s, z7.s);
+    and_(p3.b, p0, p1.b, p2.b);
     // Write -3
-    st1w(z3.s, p1, ptr(x0));
+    st1w(z3.s, p3, ptr(x0));
     }
 
     ret();
