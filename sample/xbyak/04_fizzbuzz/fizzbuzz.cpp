@@ -14,17 +14,18 @@
  */
 
 struct Code : Xbyak_aarch64::CodeGenerator {
-  Code() {
-    ldr(w1, ptr(x0));
+  Code(int n) {
     ptrue(p0.s);
-    ld1w(z0.s, p0, ptr(x0));
     dup(z1.s, -1);
     dup(z2.s, -2);
     dup(z3.s, -3);
     dup(z4.s, 3);
     dup(z5.s, 5);
     dup(z6.s, 15);
-    //Fizz
+    for (int i = 0; i < n/16;i++){
+    adds(x0, x0, i*64);
+    ld1w(z0.s, p0, ptr(x0));
+        //Fizz
     // b[i] = (a[i] / 3) * 3
     mov(z7.s, p0, z0.s);
     sdiv(z7.s, p0.s, z4.s);
@@ -54,6 +55,7 @@ struct Code : Xbyak_aarch64::CodeGenerator {
     cmpeq(p1.s, p0, z0.s, z7.s);
     // Write -3
     st1w(z3.s, p1, ptr(x0));
+    }
 
     ret();
   }
@@ -64,21 +66,26 @@ struct Code : Xbyak_aarch64::CodeGenerator {
 };
 
 int main() {
-  std::vector<int32_t> a(16);
-  for(int i=0;i<16;i++){
+  int n = 32;
+  std::vector<int32_t> a(n);
+  for(int i=0;i<n;i++){
     a[i] = i + 1;
   }
-  Code c;
+  Code c(n);
   auto f = c.getCode<void (*)(int32_t *)>();
   c.ready();
   c.dump("xbyak.dump");
-  for(int i=0;i<16;i++){
-    printf("%+03d,",a[i]);
-  }
-  printf("\n");
+
   f(a.data());
-  for(int i=0;i<16;i++){
-    printf("%+03d,",a[i]);
+  for(int i=0;i<n;i++){
+    if(a[i] == -1){
+      puts("Fizz");
+    }else if(a[i] == -2){
+      puts("Buzz");
+    }else if(a[i] == -3) {
+      puts("FizzBuzz");
+    }else{
+      printf("%d\n",a[i]);
+    }
   }
-  printf("\n");
 }
