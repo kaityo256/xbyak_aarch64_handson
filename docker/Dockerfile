@@ -36,3 +36,4 @@ COPY dot.gitconfig /home/${USER}/.gitconfig
 RUN git clone --recursive https://github.com/kaityo256/xbyak_aarch64_handson.git
 RUN cd xbyak_aarch64_handson/xbyak_aarch64;make
 RUN echo $'function dump (){\necho $1 | xxd -r -p > /tmp/dump;aarch64-linux-gnu-objdump -D -maarch64 -b binary -d /tmp/dump\n}' >> /home/${USER}/.bashrc
+RUN echo 'alias xdump="aarch64-linux-gnu-objdump -D -maarch64 -b binary -d"'
