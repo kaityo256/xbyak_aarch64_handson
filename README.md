@@ -81,7 +81,7 @@ export LIBRARY_PATH=$XBYAK_PATH/lib
 g++ test.cpp -lxbyak_aarch64
 ```
 
-でビルド、実行できる。ただし`04_fizzbuzz`のコードは実機でSIGSEGVで死ぬ。原因調査中。
+でビルド、実行できる。
 
 ## 基礎知識編
 
