@@ -71,7 +71,7 @@ struct Code : Xbyak_aarch64::CodeGenerator {
 int main() {
   int n = 32;
   Cntw cw;
-	cw.ready();
+  cw.ready();
   int nw = cw.getCode<int (*)()>()();
   printf("Number of int32_t in a register is %d.\n", nw);
   std::vector<int32_t> a(n);
