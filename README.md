@@ -52,6 +52,37 @@ This message shows that your installation appears to be working correctly.
 
 以下では、Dockerが正しくインストールされ、実行できることを前提とする。
 
+## 富岳実機での動作
+
+以下ではDocker+QEMUでの動作を想定しているが、富岳実機でもインタラクティブキューに入れば概ねそのまま動く。まずは適当なディレクトリでこのリポジトリをcloneする。例えば`~/github`にcloneしよう。
+
+```sh
+cd github
+git clone --recursive https://github.com/kaityo256/xbyak_aarch64_handson.git
+```
+
+組み込み関数に関しては、インタラクティブキューに入ってから、`FCC`でコンパイル、実行することができる。`g++`でもコンパイルできると思われるが、`arm_sve.h`が見つからないと言われてしまう。原因調査中。
+
+Xbyak_aarch64は、インタラクティブキューに入ってから、
+
+```sh
+cd github # xbyak_aarch64_handsonをcloneした場所
+cd xbyak_aarch64_handson
+cd xbyak_aarch64/
+make
+export XBYAK_PATH=~/github/xbyak_aarch64_handson/xbyak_aarch64
+export CPLUS_INCLUDE_PATH=$XBYAK_PATH
+export LIBRARY_PATH=$XBYAK_PATH/lib
+```
+
+とすればコンパイル環境が整う。例えば`xbyak_aarch64_handson/sample/xbyak/01_test`なら、
+
+```sh
+g++ test.cpp -lxbyak_aarch64
+```
+
+でビルド、実行できる。ただし`04_fizzbuzz`のコードは実機でSIGSEGVで死ぬ。原因調査中。
+
 ## 基礎知識編
 
 ### なぜSIMDなのか

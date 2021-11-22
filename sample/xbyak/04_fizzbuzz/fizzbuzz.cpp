@@ -1,4 +1,3 @@
-#include <arm_sve.h>
 #include <cstdio>
 #include <vector>
 #include <xbyak_aarch64/xbyak_aarch64.h>
