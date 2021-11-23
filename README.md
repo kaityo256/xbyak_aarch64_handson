@@ -1241,4 +1241,4 @@ RUN cd xbyak_aarch64_handson/xbyak_aarch64;make
 
 ## Licence
 
-MIT
+コードはMIT。スライドはCC-BY 4.0。
