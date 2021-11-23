@@ -4,6 +4,10 @@
 
 これは[高性能計算物理勉強会(HPC-Phys)](https://hpc-phys.kek.jp/)における、[Dockerで体験する富岳のアーキテクチャ「AArch64」ハンズオン](https://hpc-phys.kek.jp/workshop/workshop211125.html)のための資料である。DockerでArchLinuxのイメージを作り、その中で`aarch64-linux-gnu-gcc`を使ってクロスコンパイル、QEMUで実行する環境を構築している。Docker Imageができたら、その中でAArch64アーキテクチャの、特にSVEと呼ばれる特徴的なSIMD命令セットについて体験する。
 
+本ハンズオンのスライドは以下から参照できる。
+
+[Dockerで体験する富岳のアーキテクチャ「AArch64」ハンズオン](https://speakerdeck.com/kaityo256/xbyak-aarch64-handson)
+
 なお、Dockerの環境構築とC++言語の基礎的な知識については前提とする。
 
 **注意** 本資料は現在鋭意執筆中であり、以下の内容については変更される可能性が高いです。特にDockerはキャッシュの問題で、最新版のイメージが作成されない可能性があります。その場合の更新方法については当日お知らせいたします。
