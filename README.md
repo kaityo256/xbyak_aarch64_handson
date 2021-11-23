@@ -83,6 +83,18 @@ g++ test.cpp -lxbyak_aarch64
 
 でビルド、実行できる。
 
+また、Xbyakのダンプファイルは、以下のコマンドで逆アセンブルできる。
+
+```sh
+objdump -D -maarch64 -b binary xbyak.dump
+```
+
+`.bashrc`か何かで以下のエイリアスをはっておくと便利かもしれない。
+
+```sh
+alias xdump='objdump -D -maarch64 -b binary'
+```
+
 ## 基礎知識編
 
 ### なぜSIMDなのか
@@ -727,7 +739,8 @@ int main() {
   c.ready();
   c.dump("xbyak.dump");
   printf("%d\n",f(10));
-}```
+}
+```
 
 実行してみよう。
 
