@@ -154,7 +154,9 @@ Xbyakを使ったコーディングは、関数単位でフルアセンブリで
 
 後は公式ドキュメントを読んでください(丸投げ)。
 
-[github.com/herumi/xbyak](https://github.com/herumi/xbyak)
+
+* AArch64向け [github.com/fujitsu/xbyak_aarch64](https://github.com/fujitsu/xbyak_aarch64)
+* x86向け [github.com/herumi/xbyak](https://github.com/herumi/xbyak)
 
 ## ハンズオン編
 
