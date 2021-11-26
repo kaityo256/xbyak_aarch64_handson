@@ -29,36 +29,17 @@ Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docke
 
 といったエラーが出た場合、正しくインストールされていないか、うまくDockerデーモンと接続できていない。
 
-Dockerデーモンが動いていることがわかったら、イメージをダウンロードして実行できるか確認しよう。
+後は、
 
 ```sh
-$ docker run hello-world
-Unable to find image 'hello-world:latest' locally
-latest: Pulling from library/hello-world
-2db29710123e: Pull complete
-Digest: sha256:cc15c5b292d8525effc0f89cb299f1804f3a725c8d05e158653a563f15e4f685
-Status: Downloaded newer image for hello-world:latest
-
-Hello from Docker!
-This message shows that your installation appears to be working correctly.
-(以下略)
+docker run -it kaityo256/xbyak_aarch64_handson
 ```
 
-最初に`Unable to find image`と出てくるのは、ローカルにダウンロード済みのイメージが無いのでダウンロードするよ、という意味なので気にしなくて良い。最後に「Hello from Docker!」が表示されたら正しく実行できている。二度目以降の実行では、ローカルにイメージがキャッシュされているのでダウンロードされずに実行される。
+を実行すれば、勝手にイメージのダウンロードが始まり、AAarch64を体験するための環境の中に入ることができる。イメージサイズが圧縮して1.23GBと大きいので注意。
 
-```sh
-$ docker run hello-world
+## 実機での動作
 
-Hello from Docker!
-This message shows that your installation appears to be working correctly.
-(以下略)
-```
-
-以下では、Dockerが正しくインストールされ、実行できることを前提とする。
-
-## 富岳実機での動作
-
-以下ではDocker+QEMUでの動作を想定しているが、富岳実機でもインタラクティブキューに入れば概ねそのまま動く。まずは適当なディレクトリでこのリポジトリをcloneする。例えば`~/github`にcloneしよう。
+以下ではDocker+QEMUでの動作を想定しているが、「富岳」その他の実機でもインタラクティブキューに入れば概ねそのまま動く。まずは適当なディレクトリでこのリポジトリをcloneする。例えば`~/github`にcloneしよう。
 
 ```sh
 cd github
@@ -153,7 +134,6 @@ XbyakはJIT (Just in Time)アセンブラである。Xbyakはアセンブラで�
 Xbyakを使ったコーディングは、関数単位でフルアセンブリで組む感覚となる。したがって、関数の呼び出し規約や、アドレッシングの知識が必要になる。また、Xbyakはコードジェネレータなので、コードを使ってコードを組むことになるが、慣れていないと戸惑うかもしれない。
 
 後は公式ドキュメントを読んでください(丸投げ)。
-
 
 * AArch64向け [github.com/fujitsu/xbyak_aarch64](https://github.com/fujitsu/xbyak_aarch64)
 * x86向け [github.com/herumi/xbyak](https://github.com/herumi/xbyak)
@@ -352,7 +332,6 @@ ptrue p0.b, ALL
 * `svptrue_b16` => `ptrue p0.h, ALL`
 * `svptrue_b32` => `ptrue p0.s, ALL`
 * `svptrue_b64` => `ptrue p0.d, ALL`
-
 
 プレディケートレジスタへのパターンの与え方は様々なものがあるが、例えば`VL1`は「一番下を1つだけ立てる」、`VL2`は「一番したから2つ立てる」という意味になる。やってみよう。
 
@@ -1155,7 +1134,7 @@ Fizz
 
 ## Dockerfileについて
 
-Dockerfileの中身について簡単に説明しておく。
+Dockerイメージが[/hub.docker.com/r/kaityo256/xbyak_aarch64_handson](https://hub.docker.com/r/kaityo256/xbyak_aarch64_handson)に公開されているので、そのまま`docker pull`や`docker run`ができるが、イメージを修正したい人向けにDockerfileの中身について簡単に説明しておく。`docker`ディレクトリの中に入って`make`するとビルド、`make run`すると中に入ることができる。
 
 ### ディストリビューション
 
@@ -1232,14 +1211,14 @@ COPY dot.vimrc /home/${USER}/.vimrc
 COPY dot.gitconfig /home/${USER}/.gitconfig
 ```
 
-開発に必要な設定。クロスコンパイラまわりはコマンドも長いしオプションも長いので、コンパイルコマンドは`ag++`、`objdump`は`xdump`としてエイリアスを設定してある。`CPLUS_INCLUDE_PATH`にXbyakのヘッダを探すパスを設定している。`gp`はDocker内部から`git push`するための設定なので無視してかまわない。Vimの設定にこだわりがある人は`dot.vimrc`を修正すれば、コンテナの中に持ち込むことができる。`emacs`が使いたい人は適宜`Dockerfile`を書き換えるなり、`su -`してから`pacman -S --noconfirm emacs`すること。
+開発に必要な設定。クロスコンパイラまわりはコマンドも長いしオプションも長いので、コンパイルコマンドは`ag++`、`objdump`は`xdump`としてエイリアスを設定してある。`CPLUS_INCLUDE_PATH`にXbyakのヘッダを探すパスを設定している。`gp`はDocker内部から`git push`するための設定なので無視してかまわない。Vimの設定にこだわりがある人は`dot.vimrc`を修正すれば、コンテナの中に持ち込むことができる。
 
 ```Dockerfile
 RUN git clone --recursive https://github.com/kaityo256/xbyak_aarch64_handson.git
 RUN cd xbyak_aarch64_handson/xbyak_aarch64;make
 ```
 
-最後に、コンテナ内でこのリポジトリをクローンしている。サブモジュールとしてxbyak_aarch64を登録しているので、`--recursive`オプションをつけている。そして、`libxbyak_aarch64.a`をビルドするために`make`している。イメージをビルドした後にリポジトリが更新されてもDockerによりキャッシュされてイメージには反映されないた。最新版に更新するには`docker run`でコンテナの中に入ってから`git pull`すれば良い。
+最後に、コンテナ内でこのリポジトリをクローンしている。サブモジュールとしてxbyak_aarch64を登録しているので、`--recursive`オプションをつけている。そして、`libxbyak_aarch64.a`をビルドするために`make`している。
 
 ## Licence
 
