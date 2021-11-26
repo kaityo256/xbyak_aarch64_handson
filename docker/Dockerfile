@@ -14,6 +14,7 @@ RUN sed -i '1iServer = https://ftp.jaist.ac.jp/pub/Linux/ArchLinux/$repo/os/$arc
 RUN pacman -Syyu --noconfirm && \
   pacman -S --noconfirm \
   aarch64-linux-gnu-gcc \
+  emacs \
   git \
   make \
   vim \
