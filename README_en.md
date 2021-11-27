@@ -86,6 +86,67 @@ SVE is unavailable.
 
 ### 2. Predicate registers
 
+Arm SVE adopts *Predicate-centric Approach*. Most of ACLE SVE functions involve predicate registers, which allow you to control whether or not to execute an instruction on an element-by-element basis. The predicate register has different lengths depending on the vector length, and the length is not determined at compile time. Here, we will try to visualize the predicate register.
+
+The type corresponding to the predicate register is `svbool_t`.
+
+The sample code can be built as follows.
+
+```sh
+cd 02_predicatemake
+make
+```
+
+It is useful to prepare a function that takes a variable of type `svbool_t` and prints its bit representation.
+
+```cpp
+void show_pr(svbool_t tp) {
+  int n = svcntb();
+  std::vector<int8_t> a(n);
+  std::vector<int8_t> b(n);
+  std::fill(a.begin(), a.end(), 1);
+  std::fill(b.begin(), b.end(), 0);
+  svint8_t va = svld1_s8(tp, a.data());
+  svst1_s8(tp, b.data(), va);
+  for (int i = 0; i < n; i++) {
+    std::cout << (int)b[n - i - 1];
+  }
+  std::cout << std::endl;
+}
+```
+
+To set all bits of the predicate register, use `svptrue` function family. For example, to use a predicate register as a byte-by-byte mask, use `svptrue_b8`.
+
+```cpp
+show_pr(svptrue_b8());
+```
+
+The output will look like this.
+
+```txt
+1111111111111111111111111111111111111111111111111111111111111111
+```
+
+The function `svptrue_b8()` is equivalent to the function `svptrue_pat_b8` with `SV_ALL` option, and the corresponding assembly is `ptrue p0.b, ALL`.
+
+Similarly, the output results for `svptrue_b16`, `svptrue_b32`, and `svptrue_b64` are as follows.
+
+```txt
+svptrue_b16
+0101010101010101010101010101010101010101010101010101010101010101
+svptrue_b32
+0001000100010001000100010001000100010001000100010001000100010001
+svptrue_b64
+0000000100000001000000010000000100000001000000010000000100000001
+```
+
+The correspondence between `svptrue` function family and assembly is as follows.
+
+* `svptrue_b8` => `ptrue p0.b, ALL`
+* `svptrue_b16` => `ptrue p0.h, ALL`
+* `svptrue_b32` => `ptrue p0.s, ALL`
+* `svptrue_b64` => `ptrue p0.d, ALL`
+
 ### 3. Vector operations
 
 ### 4. Fizz Buzz Implementation with ACLE SVE
