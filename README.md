@@ -1188,7 +1188,7 @@ RUN ln -s /usr/sbin/aarch64-linux-gnu-ar /usr/sbin/ar
 RUN ln -s /usr/sbin/aarch64-linux-gnu-g++ /usr/sbin/g++
 ```
 
-後でXbyakのライブラリをビルドするのに、Xbyakが`g++`や`ar`をネイティブであることを前提に呼び出しているので、それに合わせてクロスコンパイラ`aarch64-linux-gnu-g++`を`g++`に、クロスアーカイバ`aarch64-linux-gnu-ar`を`ar`にそれぞれシンボリックリンクをはっている。ad hocな対応だが、ネイテイブなg++は使わないことと、Makefileをsedで書き換えるのもad hocさでは似たようなものだと思ってこの対応とした。
+後でXbyakのライブラリをビルドするのに、Xbyakが`g++`や`ar`をネイティブであることを前提に呼び出しているので、それに合わせてクロスコンパイラ`aarch64-linux-gnu-g++`を`g++`に、クロスアーカイバ`aarch64-linux-gnu-ar`を`ar`にそれぞれシンボリックリンクをはっている。ad hocな対応だが、ネイティブなg++は使わないことと、Makefileをsedで書き換えるのもad hocさでは似たようなものだと思ってこの対応とした。
 
 ### デフォルトユーザの設定
 
