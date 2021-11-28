@@ -147,9 +147,176 @@ The correspondence between `svptrue` function family and assembly is as follows.
 * `svptrue_b32` => `ptrue p0.s, ALL`
 * `svptrue_b64` => `ptrue p0.d, ALL`
 
+There are various ways to give patterns to the predicate registers, for example, `SV_VL1` means "set a bit from LSB", and `VL2` means "set two bits up two from LSB". Let's see how it works.
+
+```cpp
+void ptrue_pat() {
+  std::cout << "# pture_pat samples for vrious patterns" << std::endl;
+  std::cout << "svptrue_pat_b8(SV_ALL)" << std::endl;
+  show_pr(svptrue_pat_b8(SV_ALL));
+  std::cout << "svptrue_pat_b8(SV_VL1)" << std::endl;
+  show_pr(svptrue_pat_b8(SV_VL1));
+  std::cout << "svptrue_pat_b8(SV_VL2)" << std::endl;
+  show_pr(svptrue_pat_b8(SV_VL2));
+  std::cout << "svptrue_pat_b8(SV_VL3)" << std::endl;
+  show_pr(svptrue_pat_b8(SV_VL3));
+  std::cout << "svptrue_pat_b8(SV_VL4)" << std::endl;
+  show_pr(svptrue_pat_b8(SV_VL4));
+}
+```
+
+The output will be as follows.
+
+```txt
+# pture_pat samples for vrious patterns
+svptrue_pat_b8(SV_ALL)
+1111111111111111111111111111111111111111111111111111111111111111
+svptrue_pat_b8(SV_VL1)
+0000000000000000000000000000000000000000000000000000000000000001
+svptrue_pat_b8(SV_VL2)
+0000000000000000000000000000000000000000000000000000000000000011
+svptrue_pat_b8(SV_VL3)
+0000000000000000000000000000000000000000000000000000000000000111
+svptrue_pat_b8(SV_VL4)
+0000000000000000000000000000000000000000000000000000000000001111
+```
+
+The position of the bits to be set depend on the type. Let's see which bits are set by `SV_VL2` for various types.
+
+Here is the source code.
+
+```cpp
+void ptrue_pat_types() {
+  std::cout << "# pture_pat samples for various types" << std::endl;
+  std::cout << "svptrue_pat_b8(SV_VL2)" << std::endl;
+  show_pr(svptrue_pat_b8(SV_VL2));
+  std::cout << "svptrue_pat_b16(SV_VL2)" << std::endl;
+  show_pr(svptrue_pat_b16(SV_VL2));
+  std::cout << "svptrue_pat_b32(SV_VL2)" << std::endl;
+  show_pr(svptrue_pat_b32(SV_VL2));
+  std::cout << "svptrue_pat_b64(SV_VL2)" << std::endl;
+  show_pr(svptrue_pat_b64(SV_VL2));
+}
+```
+
+And here are the outputs.
+
+```txt
+# pture_pat samples for various types
+svptrue_pat_b8(SV_VL2)
+0000000000000000000000000000000000000000000000000000000000000011
+svptrue_pat_b16(SV_VL2)
+0000000000000000000000000000000000000000000000000000000000000101
+svptrue_pat_b32(SV_VL2)
+0000000000000000000000000000000000000000000000000000000000010001
+svptrue_pat_b64(SV_VL2)
+0000000000000000000000000000000000000000000000000000000100000001
+```
+
+You can change the vector length and see how the results change.
+
+```sh
+qemu-aarch64 -cpu max,sve128=on ./a.out
+qemu-aarch64 -cpu max,sve256=on ./a.out
+qemu-aarch64 -cpu max,sve512=on ./a.out
+```
+
 ### 3. Vector operations
 
+In order to use SIMD instructions, data should be loaded into the SIMD registers. In the following, we will see how the loading of the registers and the arithmetic operations are performed, and how mask processing can be performed using the predicate register.
+
+The sample code is in `sample/intrinsic/03_load_add`.
+
+The name of the SVE ACLE type corresponds to the type of the element contained in the SIMD register. For example, the variable that stores `float64_t` is `svfloat64_t`, and since SVE registers are not specified in length, it is not known at compile time how many `float64_t` variables are stored in the register.
+
+It is useful to prepare a function to display the contents of the SIMD register.
+
+```cpp
+void svshow(svfloat64_t va){
+  int n = svcntd();
+  std::vector<double> a(n);
+  svbool_t tp = svptrue_b64();
+  svst1_f64(tp, a.data(), va);
+  for(int i=0;i<n;i++){
+    printf("%+.7f ", a[n-i-1]);
+  }
+  printf("\n");
+}
+```
+
+Use `svld1_f64` to load into `svfloat64_t`. If you pass the predicate register and the first address, it will fetch the data as wide as the register. The code to define an array, load it into a register from it, and display the register can be written as follows.
+
+```cpp
+  double a[] = {0, 1, 2, 3, 4, 5, 6, 7};
+  svfloat64_t va = svld1_f64(svptrue_b64(), a);
+  printf("va = ");
+  svshow(va);
+```
+
+Here is the result.
+
+```txt
+va = +7.0000000 +6.0000000 +5.0000000 +4.0000000 +3.0000000 +2.0000000 +1.0000000 +0.0000000
+```
+
+Similarly, a register with all elements set to 1 is also prepared.
+
+```cpp
+  double b[] = {1, 1, 1, 1, 1, 1, 1, 1};
+  svfloat64_t vb = svld1_f64(svptrue_b64(), b);
+  printf("vb = ");
+  svshow(vb);
+  printf("\n");
+```
+
+Use `svadd_f64_z` to add `svfloat64_t`.
+
+```cpp
+  svfloat64_t vc1 = svadd_f64_z(svptrue_b64(), va, vb);
+  printf("va + vb = ");
+  svshow(vc1);
+```
+
+Here is the result.
+
+```txt
+va + vb = +8.0000000 +7.0000000 +6.0000000 +5.0000000 +4.0000000 +3.0000000 +2.0000000 +1.0000000
+```
+
+By specifying a pattern in the predicate register, it is possible to mask where the addition is to be performed. For example, if `SV_VL2` is specified, only two operations are performed from the lower address.
+
+For operations where the predicate register is inactive, you can choose to clear zero or merge the first argument.Using `svadd_f64_z`, inactive elements will be cleared to zero as follows (zeroing predication).
+
+```cpp
+  svfloat64_t vc2 = svadd_f64_z(svptrue_pat_b64(SV_VL2), va, vb);
+  printf("va + vb = ");
+  svshow(vc2);
+```
+
+```txt
+va + vb = +0.0000000 +0.0000000 +0.0000000 +0.0000000 +0.0000000 +0.0000000 +2.0000000 +1.0000000
+```
+
+Using `svadd_f64_m`, which changes the last z of `svadd_f64_z` to m, inactive elements will merge the first argument.
+
+```cpp
+  svfloat64_t vc3 = svadd_f64_m(svptrue_pat_b64(SV_VL2), va, vb);
+  printf("va + vb = ");
+  svshow(vc3);
+```
+
+```txt
+va + vb = +7.0000000 +6.0000000 +5.0000000 +4.0000000 +3.0000000 +2.0000000 +2.0000000 +1.0000000
+```
+
+In SVE, you need to code for variable length SIMD registers like this, making full use of the masking process.
+
 ### 4. Fizz Buzz Implementation with ACLE SVE
+
+Let's try FizzBuzz as a sample of ACLE SVE. Instead of displaying as Fizz or Buzz, if the element is a multiple of 3, 5, or 15, replace it with -1, -2, or -3, respectively.
+
+The sample code is in `sample/intrinsic/04_fizzbuzz`.
+
 
 ## Xbyak_aarch64
 
