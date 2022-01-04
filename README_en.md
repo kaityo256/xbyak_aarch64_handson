@@ -313,10 +313,9 @@ In SVE, you need to code for variable length SIMD registers like this, making fu
 
 ### 4. Fizz Buzz Implementation with ACLE SVE
 
-Let's try FizzBuzz as a sample of ACLE SVE. Instead of displaying as Fizz or Buzz, if the element is a multiple of 3, 5, or 15, replace it with -1, -2, or -3, respectively.
+Let's try FizzBuzz as a sample of ACLE SVE. Instead of displaying as Fizz or Buzz, we replace elements with -1, -2, or -3 when they are multiple of 3, 5, or 15, respectively.
 
 The sample code is in `sample/intrinsic/04_fizzbuzz`.
-
 
 ## Xbyak_aarch64
 
