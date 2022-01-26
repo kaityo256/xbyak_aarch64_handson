@@ -550,6 +550,28 @@ int main() {
 
 さて、この部分を組み込み関数で書き直してやれば良い。実行時までSVEのベクトル長はわからないが、簡単のため、`n`は必ずベクトル長に対応する要素数の倍数であることにしよう。つまり、ここでは端数処理は行わないことにする。
 
+まずはループに入る前に、必要な定数を格納したレジスタを作っておこう。ARM SVEは必ずプレディケータレジスタを受け取る。そのために、全部trueにしたレジスタを作っておく。
+
+```cpp
+  svbool_t tp = svptrue_b32();
+```
+
+次に、値代入用に「-1」「-2」「-3」で埋めたベクトルを作る。`vf`、`vb`、`vfb`は、それぞれ「Vector for Fizz」「Vector for Buzz」「Vector for FizzBuzz」のつもりである。
+
+```cpp
+  svint32_t vf = svdup_n_s32_x(tp, -1);
+  svint32_t vb = svdup_n_s32_x(tp, -2);
+  svint32_t vfb = svdup_n_s32_x(tp, -3);
+```
+
+割り算、掛け算のために「3」「5」「15」で埋めたベクトルも作っておく。
+
+```cpp
+  svint32_t v3 = svdup_n_s32_x(tp, 3);
+  svint32_t v5 = svdup_n_s32_x(tp, 5);
+  svint32_t v15 = svdup_n_s32_x(tp, 15);
+```
+
 SVEレジスタが整数、つまり`uint32_t`をいくつ格納できるかは`cntw`で取得できる。対応する組み込み関数は`svcntw`だ。従って、ループ構造は以下のような形になる。
 
 ```cpp
@@ -566,6 +588,102 @@ SVEレジスタが整数、つまり`uint32_t`をいくつ格納できるかは`
 ```cpp
 svint32_t va = svld1_s32(svptrue_b32(), a.data() + s);
 ```
+
+一次変数`svint32_t vr`を用意しておき、`va`を3で割った値を格納する。整数の割り算は`svdiv_s32_z`だ。
+
+```cpp
+svint32_t vr;
+vr = svdiv_s32_z(tp, va, v3);
+```
+
+さらに3をかける。整数の掛け算は`svmul_s32_z`である。
+
+```cpp
+vr = svmul_s32_z(tp, vr, v3);
+```
+
+こうして、`va`の値を3で割って3かけた値が`vr`に格納された。それぞれの要素を比較し、一致している場所が3の倍数だ。一致している場所をプレディケートレジスタに受け取ろう。`svcmpeq_s32`は、ベクトルレジスタ二つをそれぞれ`uint32_t`だと思って比較し、一致しているところを立てたプレディケートレジスタを返す。
+
+```cpp
+svbool_t pg;
+pg = svcmpeq_s32(tp, va, vr);
+```
+
+`pg`に3の倍数の位置が格納されたので、それを使って「-1」で埋めたレジスタ`vf`を`a`に書き戻す。
+
+```cpp
+svst1_s32(pg, a.data() + s, vf);
+```
+
+5の倍数、15の倍数も同様だ。以上をすべてまとめると以下のようなコードになる。
+
+```cpp
+  // FizzBuzz
+  svbool_t tp = svptrue_b32();
+  svint32_t vf = svdup_n_s32_x(tp, -1);
+  svint32_t vb = svdup_n_s32_x(tp, -2);
+  svint32_t vfb = svdup_n_s32_x(tp, -3);
+
+  svint32_t v3 = svdup_n_s32_x(tp, 3);
+  svint32_t v5 = svdup_n_s32_x(tp, 5);
+  svint32_t v15 = svdup_n_s32_x(tp, 15);
+
+  int w = svcntw();
+  int s = 0;
+
+  while (s + w <= n) {
+    svint32_t va = svld1_s32(svptrue_b32(), a.data() + s);
+
+    svint32_t vr;
+    svbool_t pg;
+    vr = svdiv_s32_z(tp, va, v3);
+    vr = svmul_s32_z(tp, vr, v3);
+    pg = svcmpeq_s32(tp, va, vr);
+    svst1_s32(pg, a.data() + s, vf);
+
+    vr = svdiv_s32_z(tp, va, v5);
+    vr = svmul_s32_z(tp, vr, v5);
+    pg = svcmpeq_s32(tp, va, vr);
+    svst1_s32(pg, a.data() + s, vb);
+
+    vr = svdiv_s32_z(tp, va, v15);
+    vr = svmul_s32_z(tp, vr, v15);
+    pg = svcmpeq_s32(tp, va, vr);
+    svst1_s32(pg, a.data() + s, vfb);
+    s += w;
+  }
+```
+
+ビルド、実行してみよう。
+
+```sh
+$ make
+aarch64-linux-gnu-g++ -static -march=armv8-a+sve -O2 fizzbuzz.cpp
+$ ./a.out
+1
+2
+Fizz
+4
+Buzz
+(snip)
+26
+Fizz
+28
+29
+FizzBuzz
+31
+32
+```
+
+レジスタ長を変えても結果が変わらないことも確認しておこう。
+
+```sh
+qemu-aarch64 -cpu max,sve128=on ./a.out
+qemu-aarch64 -cpu max,sve256=on ./a.out
+qemu-aarch64 -cpu max,sve512=on ./a.out
+```
+
+すべて同じ結果が表示されたはずだ。
 
 ### Xbyak_aarch64
 

@@ -28,13 +28,13 @@ void svshow(svint32_t va) {
 }
 
 int main() {
+  // init
   const int n = 32;
   std::vector<int32_t> a(n);
   for (int i = 0; i < n; i++) {
     a[i] = i + 1;
   }
-
-
+  // FizzBuzz
   svbool_t tp = svptrue_b32();
   svint32_t vf = svdup_n_s32_x(tp, -1);
   svint32_t vb = svdup_n_s32_x(tp, -2);
@@ -68,7 +68,7 @@ int main() {
     svst1_s32(pg, a.data() + s, vfb);
     s += w;
   }
-
+  // Show Results
   for (int i = 0; i < n; i++) {
     if (a[i] == -1) {
       puts("Fizz");
