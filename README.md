@@ -1,217 +1,63 @@
-# Xbyak on AAarch64 ハンズオン
+# Hands on: Try Arm SVE on Docker
 
-## はじめに
+[Japanese](README_ja.md) / English
 
-これは[高性能計算物理勉強会(HPC-Phys)](https://hpc-phys.kek.jp/)における、[Dockerで体験する富岳のアーキテクチャ「AArch64」ハンズオン](https://hpc-phys.kek.jp/workshop/workshop211125.html)のための資料である。DockerでArchLinuxのイメージを作り、その中で`aarch64-linux-gnu-gcc`を使ってクロスコンパイル、QEMUで実行する環境を構築している。Docker Imageができたら、その中でAArch64アーキテクチャの、特にSVEと呼ばれる特徴的なSIMD命令セットについて体験する。
+## Summary
 
-本ハンズオンのスライドは以下から参照できる。
+This is a hands-on document for people who don't have an actual machine to try Arm SVE on Docker.
 
-[Dockerで体験する富岳のアーキテクチャ「AArch64」ハンズオン](https://speakerdeck.com/kaityo256/xbyak-aarch64-handson)
-
-なお、Dockerの環境構築とC++言語の基礎的な知識については前提とする。
-
-**注意** 本資料は現在鋭意執筆中であり、以下の内容については変更される可能性が高いです。特にDockerはキャッシュの問題で、最新版のイメージが作成されない可能性があります。その場合の更新方法については当日お知らせいたします。
-
-## 事前準備：Dockerのインストール
-
-本ハンズオンではDockerを使うため、あらかじめDockerをインストールしておく必要がある。Windows、MacともにDockerのコミュニティ版であるDocker for Desktopをインストールして使うことになるだろう。Macならターミナルを、WindowsならWSL2にUbuntuをインストールして使うのが良いと思われる。Docker for Desktopのインストール後、ターミナルから
-
-```sh
-docker ps
-```
-
-を実行してエラーが出なければ正しくインストールができている。
-
-```sh
-$ docker ps
-Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
-```
-
-といったエラーが出た場合、正しくインストールされていないか、うまくDockerデーモンと接続できていない。
-
-後は、
+To have an environment to try Arm SVE with QEMU, just run the following command.
 
 ```sh
 docker run -it kaityo256/xbyak_aarch64_handson
 ```
 
-を実行すれば、勝手にイメージのダウンロードが始まり、AAarch64を体験するための環境の中に入ることができる。イメージサイズが圧縮して1.23GBと大きいので注意。
-
-## 実機での動作
-
-以下ではDocker+QEMUでの動作を想定しているが、「富岳」その他の実機でもインタラクティブキューに入れば概ねそのまま動く。まずは適当なディレクトリでこのリポジトリをcloneする。例えば`~/github`にcloneしよう。
+Once the container process is up, you will see a screen like the one below.
 
 ```sh
-cd github
-git clone --recursive https://github.com/kaityo256/xbyak_aarch64_handson.git
+$ docker run -it kaityo256/xbyak_aarch64_handson
+[user@2cd82e1ea4e3 ~]$
 ```
 
-組み込み関数に関しては、インタラクティブキューに入ってから、`FCC`でコンパイル、実行することができる。`g++`でもコンパイルできると思われるが、`arm_sve.h`が見つからないと言われてしまう。原因調査中。
+This is an image of ArchLinux with the necessary software pre-installed. In the following, you will try ARM SVE with intrinsic functions and Xbyak_aarch64.
 
-Xbyak_aarch64は、インタラクティブキューに入ってから、
+## Contribution
 
-```sh
-cd github # xbyak_aarch64_handsonをcloneした場所
-cd xbyak_aarch64_handson
-cd xbyak_aarch64/
-make
-export XBYAK_PATH=~/github/xbyak_aarch64_handson/xbyak_aarch64
-export CPLUS_INCLUDE_PATH=$XBYAK_PATH
-export LIBRARY_PATH=$XBYAK_PATH/lib
-```
+This document is an English translation of the [Japanese version](README_ja.md). The English in this document can be poor, so we appreciate pull requests for improvements.
 
-とすればコンパイル環境が整う。例えば`xbyak_aarch64_handson/sample/xbyak/01_test`なら、
+## Intrinsic Functiosn
 
-```sh
-g++ test.cpp -lxbyak_aarch64
-```
+You can use Arm SVE instructions via intrinsic function of C language, which is called the Arm C Language Extensions (ACLEs) for SVE. The sample codes for the intrinsic functions are in the directory `~/xbyak_aarch64_handson/sample/intrinsic`.
 
-でビルド、実行できる。
+### 1. SVE Length
 
-また、Xbyakのダンプファイルは、以下のコマンドで逆アセンブルできる。
+Since the length of the vector is *scalble*, and the length is not determined at compile time. So, let's first look at a sample that gets the vector length at runtime.
+
+The sample code can be built as follows.
 
 ```sh
-objdump -D -maarch64 -b binary xbyak.dump
-```
-
-`.bashrc`か何かで以下のエイリアスをはっておくと便利かもしれない。
-
-```sh
-alias xdump='objdump -D -maarch64 -b binary'
-```
-
-## 基礎知識編
-
-### なぜSIMDなのか
-
-SIMDとはいわゆるフリンの4分類の一つで、Single Instruction Multiple Dataの略である。幅の広いレジスタに複数のデータ(Multiple Data)をつめて、「せーの」でその全てに同じ演算(Single Instruction)を実施する。ベクトル同士の和や差のような計算をするため、ベクトル演算とも呼ばれる。コードがうまくSIMD命令を使えるように修正することを「SIMDベクトル化」もしくは「SIMD化」と呼ぶ。一般にSIMD化は面倒な作業であり、できるならやりたくはない。ではなぜSIMD化について考えなければならないのか。それは、現代のCPUコアの性能を引き出すには、ほぼSIMD化が必須だからだ。
-
-CPUは、簡単にいえばメモリからデータをとってきて、演算器に放り込み、演算結果をメモリに書き戻す作業を高速に繰り返す機械だ。CPUは「サイクル」という単位で動いており、一秒間に何サイクル回せるかが動作周波数と呼ばれるものだ。一般に演算器がデータを受け取ってから結果を返すまでに数サイクルかかるが、パイプライン処理という手法により、事実上「1サイクルに1演算」できるようになった。したがって、このまま性能を向上させるためには動作周波数を上げる必要があるが、これは2000年代に発熱により破綻した。
-
-1サイクルに1演算できて、動作周波数を上げることができないのだから、性能向上のためには1サイクルに複数の演算をするしかない。その手段がSIMDである。コンパイラによる自動SIMD化は、「できる時はできる」し、「できない時はできない」。「できる時」はラッキーと思えば良いし、「どうしたってできない」時はあきらめればよいが、問題は「理論上はできるはずなのにできない」時だ。その時には手でSIMD化をするしかない。本ハンズオンはそんな不幸な人のために書かれたものである。
-
-### SVEとは何か
-
-富岳が採用しているA64fxの命令セットはAArch64だが、これにはHPC向けにScalable Vector Extensions (SVE)という拡張命令セットを持っている。これは、x86でいうところのAVX2、AVX512といったもので、基本命令セットの他に追加で規定、実装されるものだ。さて、SVEの名前に含まれるScalableについて触れる前に、少しSIMDの歴史について振り返ってみたい。
-
-CPUは計算をレジスタと呼ばれる記憶装置でおこなう。コンピュータは基本的に整数の四則演算をする計算機であり、そのために整数を保存するための「普段使い」のレジスタ持っている。これを汎用レジスタと呼ぶ。一般に汎用レジスタの長さ(ビット数)をCPUのビット数とみなすことが多い。Intelの8ビットマイクロプロセッサである Intel 8080は、8ビットの汎用レジスタを7つ持っており、それぞれA, B, C, D, E, H, Lという名前がついてた。その後、Intel 8086は16ビットになり、汎用レジスタも16ビットであった。汎用レジスタはAX, CX, DX, BXなどがあり、AXの上位8ビットをAH、下位8ビットをALのようにアクセスすることができた。さらに80386で32ビットとなり、32ビットの汎用レジスタとしてEAX, ECX, EDX, EBXが定義され、EAXの下位16ビットをAXとしてアクセスできるが、上位ビットを指定することはできなくなった。Intel 64で64ビットになり、64ビット汎用レジスタであるRAXの下位32ビットとしてEAXを使えるようになっている。x86ではこのように、レジスタの長さを倍に伸ばすとき、下位半分をそれまで使っていたレジスタの名前でアクセスできるようにすることで後方互換性を保っている。SIMDレジスタであるxmm、ymm、zmmも同様な進化をたどり、512ビットレジスタであるzmm0の下位256ビットがymm0、さらにその下位128ビットがxmm0としてアクセスできる。このようにしておくと、レジスタの長さを伸ばしても過去の資産がそのまま動くメリットはあるのだが、古いコードを動かすとせっかく伸びたレジスタの半分以下しか使っておらず、ハードウェアの性能向上の恩恵を得られない、というデメリットがあった。前述の通り、昨今の性能向上の大部分はSIMDレジスタの長さの伸長に依っているため、新しいレジスタを使ってコードを書き直さなければハードウェアの性能向上の恩恵を得られない。レジスタが伸びるたびにこれが繰り返されればイヤになるのが人情であろう。そこで、レジスタの長さを固定せず、ハードウェアのレジスタの長さに対して自動でスケールしてくれる、夢のような命令セットが考えられた。Scalable Vector Extensions (SVE)である。
-
-SVEでは、ハードウェアとしてはレジスタの長さを規定するが、命令セットではレジスタの長さを規定しない。ではどうするかというと、ハードウェアのレジスタの長さを取得する命令を持ち、それを使ってループを回すことにより、ハードウェアのレジスタ長を有効活用する。例えばx86でymmを使っていたら、たとえハードウェアがzmmを持っていても、その半分しか使えない。ymmは256ビットなので、64ビット倍精度実数を4つ保持できる。したがって、200個のデータはymmを使えば50回で処理できる。このコードをそのままzmmが使えるハードウェアで実行しても、やはり処理回数は50回だ。しかし、SVEでは、ISAレベルではレジスタの長さが固定されていないため、同じ実行バイナリで256ビットのハードウェアレジスタを持っていた場合は50回、512ビットのレジスタを持っていれば25回と、処理回数が軽減する。このように「ちゃんと組んでおけば、同じ実行バイナリで、将来のレジスタ長の伸長に対応したコードができあがる」というのがSVEのお題目である。
-
-そんなSVE命令を使うにはいくつかの方法がある。
-
-1. 「コンパイラに完全に任せる」最も基本的な方法である。コンパイラオプションで「可能な限り最適化せよ」と指示すると、ほとんどの場合においてSIMD命令を積極的に使ってくれる。最近のコンパイラは賢くなっており、比較的単純なコードであればSIMDベクトル化もかなり良い感じにやってくれる。
-2. 「コンパイラに指示を与える」コンパイラには判断できない条件によりSIMDベクトル化ができない場合、人間がそれをコンパイラにOpenMPのsimdディレクティブ等で教えてやることでうまくSIMDベクトル化ができる場合がある。また、多重ループの内側と外側のどちらをSIMD化した方が良いかはコードによって異なるが、コンパイラの判断とは異なるループをSIMD化したい場合なども人間が適宜指示することで性能が向上する場合がある。また、コンパイラがSIMD化しやすいようにデータ構造を変えるのも有効だ。このレベルでは、コンパイラの出力するレポートをにらみながら指示やオプションを変更し、性能評価を繰り返す。
-3. 「組み込み関数を使う」どうしてもコンパイラが思うようなコードを吐いてくれなかった場合、組み込み関数を使って人間が直接SIMD命令を書く。特にシャッフル命令を多用する必要がある場合などはコンパイラはSIMD化できないため、人間が手で書く必要がある。原則として組み込み関数はアセンブリと一対一対応しているため、ほぼほぼアセンブリで書くのと同じような感覚になる。ただし、フルアセンブリで書くよりは組み込み関数で書いた方がいろいろ楽。
-4. 「Xbyakを使う」。JITアセンブリであるXbyakを使ってコードを書く。やはりアセンブリと一対一対応した関数を呼び出すことで、アセンブリを「実行時に組み立てて」いくイメージとなる。組み込み関数と異なり、ABIの知識が必要となる。
-5. 「フルアセンブリ/インラインアセンブリで書く」。数値計算でここまでやる人は少ないと思われる。Xbyakが使えるなら同じことができるはずなので、現在はアセンブリで直接書くメリットはあまりないであろう。
-
-人間が手を入れるレベルが「コンパイラオプション」「ソースコードにディレクティブを入れる」「組み込み関数を使う」「アセンブリを書く」と、徐々に低くなっているのがわかるであろう。個人的な意見としては、人間がアセンブリを書くのは大変なのでそこまでやらなくても、という気はするが、アセンブリ自体は知っておいて方が良いと考える。少なくともコンパイラのレポートを詳細に読み込むよりも、コンパイラが吐いたアセンブリを読む方が早いことが多いからだ。
-
-本稿では組み込み関数を使う方法でSVEの特徴を概観したあと、Xbyakを使う方法を紹介する。
-
-### 組み込み関数の概要
-
-組み込み関数は、機械語と一体一対応した関数を呼び出すことで所望のアセンブリを入力する方法だ。SVEを使いたい場合は、バージョンが新しいGCCならARMの組み込み関数に対応しており、`arm_sve.h`をインクルードすることで使えるようになる。また、レジスタに対応した組み込み型も使えるようになる。
-
-アセンブリと一体一対応している以上、組み込み関数を用いたプログラミングはほぼアセンブリを組む感覚と同じだが、フルアセンブリで組む場合に比べて以下のメリットがある。
-
-* 関数呼び出しの規約を気にしなくて良い。関数の中に記述できるため、引数の処理などはC/C++と同様にできる。
-* アドレッシングを気にしなくて良い。グローバル変数もローカル変数も定数も全て同じように使うことができる。
-* レジスタの割り当てを気にしなくてよい。組み込み型を使うと、コンパイラはなるべく効率良く対応するレジスタを割り当てようとする。したがって、「ここでz6を使ったから、いまはz7を使って・・・」などと考えなくて良い。また、レジスタが足りなくなった場合のスピルもコンパイラがやってくれる
-* 最適化がかかる余地がある。フルアセンブリで組んだら組んだ通りにしか動かないが、組み込み関数でかけば、その範囲でコンパイラが最適化をかけてくれる。
-
-ただし、組み込み関数が対応していない命令があったり、コンパイラの最適化が仇となる場合もあるので注意。
-
-後は公式ドキュメントを読んでください(丸投げ)。
-
-[ARM C Language Extensions for SVE](https://developer.arm.com/documentation/100987/latest/)
-
-### Xbyakの概要
-
-XbyakはJIT (Just in Time)アセンブラである。Xbyakはアセンブラであるから、アセンブリを書いたら、それを機械語にしてくれるツールであり、これで書いたら勝手に早いコードを生成してくれる魔法のツールではない。しかし、Xbyakは通常のアセンブラと異なり、C/C++のソースコードに埋め込んで使うことができる。基本的にはアセンブリと一体一対応した命令を使ってプログラムを組み立てる。しかし、組み込み関数やインラインアセンブラが、コードを静的に実行ファイルに吐くのに対して、Xbyakで組んだコードはプログラム実行時に確保されたメモリに詰まれ、そこを関数のように呼び出すことで実行される。これにより、Xbyakは「コンパイル時には確定していないが、実行時にはわかっている情報」を利用して適切なコードを生成することができる(JITアセンブラと呼ばれる所以である)。
-
-Xbyakを使ったコーディングは、関数単位でフルアセンブリで組む感覚となる。したがって、関数の呼び出し規約や、アドレッシングの知識が必要になる。また、Xbyakはコードジェネレータなので、コードを使ってコードを組むことになるが、慣れていないと戸惑うかもしれない。
-
-後は公式ドキュメントを読んでください(丸投げ)。
-
-* AArch64向け [github.com/fujitsu/xbyak_aarch64](https://github.com/fujitsu/xbyak_aarch64)
-* x86向け [github.com/herumi/xbyak](https://github.com/herumi/xbyak)
-
-## ハンズオン編
-
-### Dockerイメージのビルド
-
-SVE命令を使うクロスコンパイラや、QEMUで実行できる環境がDockerファイルとして用意してある。
-
-適当な場所でこのリポジトリをクローンしよう。
-
-```sh
-git clone https://github.com/kaityo256/xbyak_aarch64_handson.git
-cd xbyak_aarch64_handson
-```
-
-`docker`というディレクトリに入って`make`する。
-
-```sh
-cd docker
+cd 01_sve_length/
 make
 ```
 
-すると、`kaityo256/xbyak_aarch64_handson`というイメージができる。なお、キャッシュの問題で最新版のイメージが作成されない場合がある。その場合は`make no-cache`とするとキャッシュを使わずにゼロからビルドしなおす。
-
-イメージができたら`make run`でDockerイメージの中に入ることができる。
+Then you can run the executable using QEMU.
 
 ```sh
-$ make run
-docker run -e GIT_USER= -e GIT_TOKEN= -it kaityo256/xbyak_aarch64_handson
-[user@22e98a6d9601 ~]$
-```
-
-以下はDockerコンテナの中での作業である。
-
-環境変数`GIT_USER`や`GIT_TOKEN`は開発用に渡しているものなので気にしないで欲しい。デフォルトで`user`というアカウントでログインするが、`root`というパスワードで`su -`できるので、必要なパッケージがあれば適宜`pacman`でインストールすること。
-
-### 組み込み関数
-
-#### 1. SVEの長さ
-
-SVEは「Scalable」つまり、ベクトル長がコンパイル時に決定せず、実行時に決まる。まずはその様子を見てみよう。Dockerイメージの中に入ったら、`xbyak_aarch64_handson/sample`の中にサンプルコードがある。
-
-コードは`intrinsic/01_sve_length`の中にあり、`make`すればビルド、`make run`すれば実行できる。
-
-```sh
-$ cd xbyak_aarch64_handson
-$ cd sample
-$ cd intrinsic
-$ cd 01_sve_length
-$ make
-aarch64-linux-gnu-g++ -static -march=armv8-a+sve -O2 sve_length.cpp
-$ make run
-qemu-aarch64 ./a.out
+$ qemu-aarch64 ./a.out
 SVE is available. The length is 512 bits
 ```
 
-上記のように「SVE is available. The length is 512 bits」という実行結果が出たら成功だ。
-
-ついでに、SVEがScalableであること、すなわち、同じ実行バイナリで、異なるSIMDベクトル長のハードウェアに対応できることも確認しておこう。QEMUに`-cpu`オプションを指定することでどのようなCPUをエミュレートするか指示できる。例えば`-cpu max,sve128=on`を指定すると、SVEのベクトル長として128ビットのハードウェアを指定したことになる。
+You can specify the vector length in the QEMU options.
 
 ```sh
 $ qemu-aarch64 -cpu max,sve128=on ./a.out
 SVE is available. The length is 128 bits
-```
 
-同様に、256ビットや512ビットも指定できる。
-
-```sh
 $ qemu-aarch64 -cpu max,sve256=on ./a.out
 SVE is available. The length is 256 bits
-
-$ qemu-aarch64 -cpu max,sve512=on ./a.out
-SVE is available. The length is 512 bits
 ```
 
-上記でコンパイル、実行したソースコードは以下の通り(`sve_length.cpp`)。
+Here is the source code (`sve_length.cpp`).
 
 ```sh
 #include <cstdio>
@@ -232,11 +78,11 @@ int main() {
 }
 ```
 
-ARM SVEが利用可能かどうかは、`__ARM_FEATURE_SVE`マクロが定義されているかどうかでわかる。もし`__ARM_FEATURE_SVE`が定義されていたら、`arm_sve.h`をインクルードすることで組み込み関数が利用可能だ。
+Whether or not ARM SVE can be used can be determined by whether or not __ARM_FEATURE_SVE is defined. If `__ARM_FEATURE_SVE` is defined, then you can use intrinsic functions for SVE by including `arm_sve.h`.
 
-ベクトル長は`svcntb()`で取得できる。これはベクトル長をバイト単位で返す関数なので、8倍するとビット長となる。対応するアセンブリは`cntb`だ。ACLE SVE関数は、`sv`という接頭辞に、対応するアセンブリの命令をつなげたものであることが多い。
+The vector length can be obtained by `svcntb()` which returns the vector length in bytes. The corresponding instruction is `cntb`. The name of a ACLE SVE function consists of a prefix `sv` followed by the corresponding instruction in lower case.
 
-SVEを有効にするためには、`-march=armv8-a+sve`オプションをつけてコンパイルする必要がある。このオプションをつけないと、 `__ARM_FEATURE_SVE`が定義されない。実際にコンパイルして見てみよう。
+In order to enable SVE, you need to compile with the `-march=armv8-a+sve` option. Without the option, `__ARM_FEATURE_SVE` will not be defined.
 
 ```sh
 $ aarch64-linux-gnu-g++ -static sve_length.cpp
@@ -244,15 +90,20 @@ $ qemu-aarch64 ./a.out
 SVE is unavailable.
 ```
 
-`__ARM_FEATURE_SVE`が定義されていないため、「SVEは使えないよ」という結果が表示された。
+### 2. Predicate registers
 
-#### 2. プレディケートレジスタ
+Arm SVE adopts *Predicate-centric Approach*. Most of ACLE SVE functions involve predicate registers, which allow you to control whether or not to execute an instruction on an element-by-element basis. The predicate register has different lengths depending on the vector length, and the length is not determined at compile time. Here, we will try to visualize the predicate register.
 
-SVEはSIMD幅を固定しない命令セットであるから、基本的にマスクレジスタを使ったマスク処理を使うことになる。AArch64にはマスク処理のためにプレディケート物理レジスタ(predicator physical register, ppr)が48本用意されており、そのうち16本がユーザから見える(残りはレジスタリネーミングに使われる)。個人的にSVEを使うキモはプレディケートレジスタにあると考える。そこで、まずは組み込み関数を使ってプレディケートレジスタの振る舞いを調べてみよう。
+The type corresponding to the predicate register is `svbool_t`.
 
-`sample/intrinsic/02_predicate`ディレクトリに、組み込み関数を使ったプレディケートレジスタのサンプル`predicate.cpp`がある。中身を順に見ていこう。
+The sample code can be built as follows.
 
-プレディケートレジスタは、最低で1バイト単位(8bit)単位でのマスク処理に使われる。したがって、512ビットアーキテクチャならば、64ビットの情報を持っていることになる。その長さは`svcntb`で取得できる。プレディケートレジスタの中身を表示させる関数`show_pr`は以下のように作ることができる。
+```sh
+cd 02_predicatemake
+make
+```
+
+It is useful to prepare a function that takes a variable of type `svbool_t` and prints its bit representation.
 
 ```cpp
 void show_pr(svbool_t tp) {
@@ -270,32 +121,23 @@ void show_pr(svbool_t tp) {
 }
 ```
 
-プレディケートレジスタの長さを`svncntb`で取得し、`int8_t`の配列を二つ用意、片方を全て1に、片方を全て0に初期化し、受け取ったプレディケートレジスタを使ってマスクコピーをしている。その結果、コピー先で1になっているところは、プレディケートレジスタが立っていた場所だ、というロジックで可視化している。
-
-プレディケートレジスタのビットのセットの仕方には様々な方法があるが、一番単純なのは「全て1にする」ことだろう。そのために`ptrue`という命令が用意されている。しかし、例えば512ビットのレジスタがあったとして、それを何分割して使うかは、使う値の「型」による。そのため、初期化で立てるべきビットの位置も「型」に依存する。それを見てみよう。
-
-組み込み関数の名前は概ね「sv+アセンブリ命令_型情報」となっている。プレディケートレジスタを全てtrueで初期化するアセンブリは`PTRUE`なので、対応する組み込み関数は`svptrue_型`となる。例えば8ビットなら`svprue_b8`、16ビットなら`svptrue_b16`等になる。それぞれで初期化したプレディケートレジスタを表示させてみよう。コードはこんな感じになる。
+To set all bits of the predicate register, use `svptrue` function family. For example, to use a predicate register as a byte-by-byte mask, use `svptrue_b8`.
 
 ```cpp
-void ptrue() {
-  std::cout << "# pture samples for various types" << std::endl;
-  std::cout << "svptrue_b8" << std::endl;
-  show_pr(svptrue_b8());
-  std::cout << "svptrue_b16" << std::endl;
-  show_pr(svptrue_b16());
-  std::cout << "svptrue_b32" << std::endl;
-  show_pr(svptrue_b32());
-  std::cout << "svptrue_b64" << std::endl;
-  show_pr(svptrue_b64());
-}
+show_pr(svptrue_b8());
 ```
 
-実行結果はこうなる。
+The output will look like this.
 
 ```txt
-# pture samples for various types
-svptrue_b8
 1111111111111111111111111111111111111111111111111111111111111111
+```
+
+The function `svptrue_b8()` is equivalent to the function `svptrue_pat_b8` with `SV_ALL` option, and the corresponding assembly is `ptrue p0.b, ALL`.
+
+Similarly, the output results for `svptrue_b16`, `svptrue_b32`, and `svptrue_b64` are as follows.
+
+```txt
 svptrue_b16
 0101010101010101010101010101010101010101010101010101010101010101
 svptrue_b32
@@ -304,22 +146,14 @@ svptrue_b64
 0000000100000001000000010000000100000001000000010000000100000001
 ```
 
-`svptrue_b8`が64ビット全てを立ているのに対して、`svptrue_b16`が2つに1つを、`svptrue_b32`が4つに1つを立てているのがわかる。
-
-プレディケートレジスタの立て方には「パターン」を与えることができる。先ほどの`svptrue_b8()`という関数は、実は`svptrue_pat_b8`という関数の引数に`SV_ALL`を与えた場合と等価であり、対応するアセンブリは
-
-```txt
-ptrue p0.b, ALL
-```
-
-になる。`ptrue`が命令、`p0`がプレディケートレジスタで、`p0.b`は、バイト単位で使うという意味、`ALL`は与えるパターンだ。なお、組み込み関数とアセンブリの関係は以下の通り。
+The correspondence between `svptrue` function family and assembly is as follows.
 
 * `svptrue_b8` => `ptrue p0.b, ALL`
 * `svptrue_b16` => `ptrue p0.h, ALL`
 * `svptrue_b32` => `ptrue p0.s, ALL`
 * `svptrue_b64` => `ptrue p0.d, ALL`
 
-プレディケートレジスタへのパターンの与え方は様々なものがあるが、例えば`VL1`は「一番下を1つだけ立てる」、`VL2`は「一番したから2つ立てる」という意味になる。やってみよう。
+There are various ways to give patterns to the predicate registers, for example, `SV_VL1` means "set a bit from LSB", and `VL2` means "set two bits up two from LSB". Let's see how it works.
 
 ```cpp
 void ptrue_pat() {
@@ -337,7 +171,7 @@ void ptrue_pat() {
 }
 ```
 
-実行結果は以下の通り。
+The output will be as follows.
 
 ```txt
 # pture_pat samples for vrious patterns
@@ -353,9 +187,9 @@ svptrue_pat_b8(SV_VL4)
 0000000000000000000000000000000000000000000000000000000000001111
 ```
 
-`SV_ALL`が全てを、`SV_VL`*X*が「下から*X*ビット立てる」という意味になっている。
+The position of the bits to be set depend on the type. Let's see which bits are set by `SV_VL2` for various types.
 
-この「下から*X*ビット立てる」時に、どこを立てるかは型に依存する。`SV_VL2`をいろんな型に与えて試してみよう。
+Here is the source code.
 
 ```cpp
 void ptrue_pat_types() {
@@ -371,7 +205,7 @@ void ptrue_pat_types() {
 }
 ```
 
-実行結果は以下の通り。
+And here are the outputs.
 
 ```txt
 # pture_pat samples for various types
@@ -385,17 +219,23 @@ svptrue_pat_b64(SV_VL2)
 0000000000000000000000000000000000000000000000000000000100000001
 ```
 
-コードは`make`でビルド、`make run`で実行できるが、`make run128`とすると、レジスタが128ビットの場合の実行結果が、`make run256`とすると、256ビットの時の実行結果を得ることができる。
+You can change the vector length and see how the results change.
 
-#### 3. レジスタへのロードと演算
+```sh
+qemu-aarch64 -cpu max,sve128=on ./a.out
+qemu-aarch64 -cpu max,sve256=on ./a.out
+qemu-aarch64 -cpu max,sve512=on ./a.out
+```
 
-SIMD命令を使うためには、SIMDレジスタにデータをロードしてやらなければならない。SVEは長さが固定されていないため、原則として一次元的に並んだデータを順番にレジスタにロードすることになる。以下では、レジスタの中身を可視化してやることで、レジスタへのロードと演算がどうなっているか、特にSIMDにより1命令で一気に複数の演算ができること、プレディケートレジスタによりマスク処理ができることまで確認しておく。
+### 3. Vector operations
 
-`sample/intrinsic/03_load_add`ディレクトリに、組み込み関数を使ったベクトルロードとベクトル加算のサンプル`load_add.cpp`がある。中身を順に見ていこう。
+In order to use SIMD instructions, data should be loaded into the SIMD registers. In the following, we will see how the loading of the registers and the arithmetic operations are performed, and how mask processing can be performed using the predicate register.
 
-まず、レジスタの中身を表示するための関数を作っておこう。組み込み関数では、SIMDレジスタを表現するための型がある。例えば`float64_t`を格納する変数は`svfloat64_t`だ。SVEのレジスタは長さが規定されていないため、この中に`float64_t`が何個入っているかはコンパイル時にはわからない。逆に言えば、わからなくても動くようにコードを書く必要がある。
+The sample code is in `sample/intrinsic/03_load_add`.
 
-`svfloat64_t`の中身を表示するコードはこんな感じに書ける。
+The name of the SVE ACLE type corresponds to the type of the element contained in the SIMD register. For example, the variable that stores `float64_t` is `svfloat64_t`, and since SVE registers are not specified in length, it is not known at compile time how many `float64_t` variables are stored in the register.
+
+It is useful to prepare a function to display the contents of the SIMD register.
 
 ```cpp
 void svshow(svfloat64_t va){
@@ -410,7 +250,7 @@ void svshow(svfloat64_t va){
 }
 ```
 
-`svfloat64_t`へのロードは、`svld1_f64`を使う。プレディケートレジスタと先頭アドレスを渡すと、レジスタの幅だけデータを持ってくる。配列を定義して、そこからレジスタにロード、表示するコードはこう書ける。
+Use `svld1_f64` to load into `svfloat64_t`. If you pass the predicate register and the first address, it will fetch the data as wide as the register. The code to define an array, load it into a register from it, and display the register can be written as follows.
 
 ```cpp
   double a[] = {0, 1, 2, 3, 4, 5, 6, 7};
@@ -419,15 +259,13 @@ void svshow(svfloat64_t va){
   svshow(va);
 ```
 
-ここで、`svld1_f64`の最初にプレディケートレジスタを渡していることに注意。例えば配列サイズを超えたところを触るとSIGSEGVを引き起こしてしまうため、適宜マスク処理してロードしてやる必要がある。ここでは全てのビットが立ったプレディケートレジスタを渡しているため、レジスタの長さの分だけの要素数をロードしている。
-
-実行結果はこうなる。
+Here is the result.
 
 ```txt
 va = +7.0000000 +6.0000000 +5.0000000 +4.0000000 +3.0000000 +2.0000000 +1.0000000 +0.0000000
 ```
 
-同様に、`vb`にもデータをロードしておこう。こちらは全て1にしておこう。
+Similarly, a register with all elements set to 1 is also prepared.
 
 ```cpp
   double b[] = {1, 1, 1, 1, 1, 1, 1, 1};
@@ -437,7 +275,7 @@ va = +7.0000000 +6.0000000 +5.0000000 +4.0000000 +3.0000000 +2.0000000 +1.000000
   printf("\n");
 ```
 
-`svfloat64_t`同士の加算は`svadd_f64_z`で行う。全てを加算する場合は以下のように書ける。
+Use `svadd_f64_z` to add `svfloat64_t`.
 
 ```cpp
   svfloat64_t vc1 = svadd_f64_z(svptrue_b64(), va, vb);
@@ -445,13 +283,15 @@ va = +7.0000000 +6.0000000 +5.0000000 +4.0000000 +3.0000000 +2.0000000 +1.000000
   svshow(vc1);
 ```
 
-実行結果は以下の通り。
+Here is the result.
 
 ```txt
 va + vb = +8.0000000 +7.0000000 +6.0000000 +5.0000000 +4.0000000 +3.0000000 +2.0000000 +1.0000000
 ```
 
-プレディケートレジスタにパターンを指示すると、加算を実行する場所にマスクをかけることができる。たとえば`VL2`を指定すれば、アドレス下位から2つだけ演算する。残りはゼロクリアしたり、第一引数をそのまま通過させたりすることができる。まず、ゼロクリアの場合はこう書ける。
+By specifying a pattern in the predicate register, it is possible to mask where the addition is to be performed. For example, if `SV_VL2` is specified, only two operations are performed from the lower address.
+
+For operations where the predicate register is inactive, you can choose to clear zero or merge the first argument.Using `svadd_f64_z`, inactive elements will be cleared to zero as follows (zeroing predication).
 
 ```cpp
   svfloat64_t vc2 = svadd_f64_z(svptrue_pat_b64(SV_VL2), va, vb);
@@ -459,15 +299,11 @@ va + vb = +8.0000000 +7.0000000 +6.0000000 +5.0000000 +4.0000000 +3.0000000 +2.0
   svshow(vc2);
 ```
 
-実行結果は以下の通り。
-
 ```txt
 va + vb = +0.0000000 +0.0000000 +0.0000000 +0.0000000 +0.0000000 +0.0000000 +2.0000000 +1.0000000
 ```
 
-下位の要素二つだけが加算され、残りはゼロクリアされたことがわかる。
-
-`svadd_f64_z`の最後のzをmに変えた`svadd_f64_m`にすると、プレディケートレジスタが立っていないところは第一引数を通過させる。
+Using `svadd_f64_m`, which changes the last z of `svadd_f64_z` to m, inactive elements will merge the first argument.
 
 ```cpp
   svfloat64_t vc3 = svadd_f64_m(svptrue_pat_b64(SV_VL2), va, vb);
@@ -475,19 +311,17 @@ va + vb = +0.0000000 +0.0000000 +0.0000000 +0.0000000 +0.0000000 +0.0000000 +2.0
   svshow(vc3);
 ```
 
-実行結果は以下の通り。
-
 ```txt
 va + vb = +7.0000000 +6.0000000 +5.0000000 +4.0000000 +3.0000000 +2.0000000 +2.0000000 +1.0000000
 ```
 
-プレディケートレジスタが立っていなかったところは、第一引数(`va`)の値がそのまま通過したことがわかる。
+In SVE, you need to code for variable length SIMD registers like this, making full use of the masking process.
 
-このディレクトリにも`make run128`、`make run256`などが用意されているので、レジスタ長さが変わったらどのように実行結果が変わるのか確認してみて欲しい。SVEではこのように可変長のSIMDレジスタに対して、マスク処理を駆使したコードを組んでいくことになる。
+### 4. Fizz Buzz Implementation with ACLE SVE
 
-#### 4. FizzBuzz
+Let's try to write FizzBuzz as an example of code that makes full use of scalable SIMD registers and mask operations. Instead of displaying as Fizz or Buzz, we replace elements with -1, -2, or -3 when they are multiple of 3, 5, or 15, respectively.
 
-もう少し可変長レジスタとマスク処理を駆使したコード例として、FizzBuzzを組んでみよう。あらかじめ配列に整数を入れておき、3の倍数なら-1を、5の倍数なら-2を、15の倍数なら-3を代入するコードを考える。シリアルコードとしては、以下のようなイメージだ。
+The serial code looks like this.
 
 ```cpp
 #include <cstdio>
@@ -525,9 +359,11 @@ int main() {
 }
 ```
 
-さて、このコードは初期化、FizzBuzz、結果表示と３つの部分から構成されるが、このうちFizzBuzzのところをSVEで書き直すことを考える。
+Now, this code consists of three parts: initialization, FizzBuzz, and result display. We rewrite the FizzBuzz part with SVE.
 
-まずはif文をなんとかしよう。SIMD化ではif文をマスク処理で行うのがセオリーだ。そのマスクを作るために、`a[i]`を3で割って3倍し、元の数字に一致するかどうかで3の倍数であるかどうかを判別しよう。こんなコードになる。
+First of all, let's deal with the if statement. We use mask operations to express if statements. To make the mask, we fist divide `a[i]` by 3, then multiply it by 3, and determine whether it is a multiple of 3 or not by matching the original number.
+
+It would look like this.
 
 ```cpp
   // FizzBuzz
@@ -548,15 +384,15 @@ int main() {
   }
 ```
 
-さて、この部分を組み込み関数で書き直してやれば良い。実行時までSVEのベクトル長はわからないが、簡単のため、`n`は必ずベクトル長に対応する要素数の倍数であることにしよう。つまり、ここでは端数処理は行わないことにする。
+We will rewrite this part with intrinsic functions. We don't know the vector length of SVE until runtime, but for simplicity, let's assume that `n` is always a multiple of the number of elements corresponding to the vector length.
 
-まずはループに入る前に、必要な定数を格納したレジスタを作っておこう。ARM SVEは必ずプレディケータレジスタを受け取る。そのために、全部trueにしたレジスタを作っておく。
+Before entering the loop, we prepare registers that contain the necessary constants. ARM SVE intrinsic functions will always receive a predicator register, so we prepare a register which is all true.
 
 ```cpp
   svbool_t tp = svptrue_b32();
 ```
 
-次に、値代入用に「-1」「-2」「-3」で埋めたベクトルを作る。`vf`、`vb`、`vfb`は、それぞれ「Vector for Fizz」「Vector for Buzz」「Vector for FizzBuzz」のつもりである。
+Next, we make a vector filled with -1, -2, and -3 for value assignment. `vf`, `vb`, and `vfb` denote "Vector for Fizz", "Vector for Buzz", and "Vector for FizzBuzz", respectively.
 
 ```cpp
   svint32_t vf = svdup_n_s32_x(tp, -1);
@@ -564,7 +400,7 @@ int main() {
   svint32_t vfb = svdup_n_s32_x(tp, -3);
 ```
 
-割り算、掛け算のために「3」「5」「15」で埋めたベクトルも作っておく。
+We also make a vector filled with 3, 5, and 15 for divisions and multiplications.
 
 ```cpp
   svint32_t v3 = svdup_n_s32_x(tp, 3);
@@ -572,7 +408,7 @@ int main() {
   svint32_t v15 = svdup_n_s32_x(tp, 15);
 ```
 
-SVEレジスタが整数、つまり`uint32_t`をいくつ格納できるかは`cntw`で取得できる。対応する組み込み関数は`svcntw`だ。従って、ループ構造は以下のような形になる。
+How many integers, i.e. `uint32_t`, can be stored in SVE registers can be obtained with `cntw`. The corresponding intrinsic function is `svcntw`. Therefore, the loop structure looks as follows.
 
 ```cpp
   int w = svcntw();
@@ -583,39 +419,41 @@ SVEレジスタが整数、つまり`uint32_t`をいくつ格納できるかは`
   }
 ```
 
-ここで、`s`は「これから扱うデータの先頭のインデックス」である。さて、`std::vector<int32_t> a(n)`の`s`番目のインデックスから`w`個だけデータをレジスタにロードするには、`svld1_s32`を使う。
+Here, s is the index of the beginning of the data to be operated.
+
+To load `w` data from the `s`th index of `std::vector<int32_t> a(n)` into a SIMD register, we use `svld1_s32`.
 
 ```cpp
 svint32_t va = svld1_s32(svptrue_b32(), a.data() + s);
 ```
 
-一次変数`svint32_t vr`を用意しておき、`va`を3で割った値を格納する。整数の割り算は`svdiv_s32_z`だ。
+We prepare a temporaly variable `svint32_t vr` to store the value of `va` divided by 3. The function for integer division is `svdiv_s32_z`.
 
 ```cpp
 svint32_t vr;
 vr = svdiv_s32_z(tp, va, v3);
 ```
 
-さらに3をかける。整数の掛け算は`svmul_s32_z`である。
+We next multiply by 3. The mfunction for ultiplication of integers is `svmul_s32_z`.
 
 ```cpp
 vr = svmul_s32_z(tp, vr, v3);
 ```
 
-こうして、`va`の値を3で割って3かけた値が`vr`に格納された。それぞれの要素を比較し、一致している場所が3の倍数だ。一致している場所をプレディケートレジスタに受け取ろう。`svcmpeq_s32`は、ベクトルレジスタ二つをそれぞれ`uint32_t`だと思って比較し、一致しているところを立てたプレディケートレジスタを返す。
+Now `vr` stores the values of `va` divided by 3 and multiplied by 3. Compare each element between `va` and `vr`, and the location that matches is a multiple of 3. We put the matching locations into the predicate register by `svcmpeq_s32`, which compares the two vector registers as if they were `uint32_t`, and returns the predicate register with the matching location.
 
 ```cpp
 svbool_t pg;
 pg = svcmpeq_s32(tp, va, vr);
 ```
 
-`pg`に3の倍数の位置が格納されたので、それを使って「-1」で埋めたレジスタ`vf`を`a`に書き戻す。
+Since the positions of multiples of 3 are now stored in `pg`, we use it to write the register `vf` filled with -1 back to `a`.
 
 ```cpp
 svst1_s32(pg, a.data() + s, vf);
 ```
 
-5の倍数、15の倍数も同様だ。以上をすべてまとめると以下のようなコードになる。
+The same goes for multiples of 5 and multiples of 15. Putting all the above together, the code looks like the following.
 
 ```cpp
   // FizzBuzz
@@ -654,7 +492,7 @@ svst1_s32(pg, a.data() + s, vf);
   }
 ```
 
-ビルド、実行してみよう。
+The sample code is in `sample/intrinsic/04_fizzbuzz`. You can build and run the sample as follows.
 
 ```sh
 $ make
@@ -675,7 +513,7 @@ FizzBuzz
 32
 ```
 
-レジスタ長を変えても結果が変わらないことも確認しておこう。
+You can confirm that changing the register length does not change the result.
 
 ```sh
 qemu-aarch64 -cpu max,sve128=on ./a.out
@@ -683,13 +521,13 @@ qemu-aarch64 -cpu max,sve256=on ./a.out
 qemu-aarch64 -cpu max,sve512=on ./a.out
 ```
 
-すべて同じ結果が表示されたはずだ。
+You should see the same results for all of the aboves.
 
-### Xbyak_aarch64
+## Xbyak_aarch64
 
-#### 1. テスト
+### 1. Test
 
-まずはXbyak_aarch64の動作テストをしてみよう。Xbyakのサンプルコードはリポジトリの`sample/xbyak`以下にある。まずはテストコードをコンパイル、実行してみよう。
+First of all, let's test the operation of Xbyak_aarch64. The sample codes are in `sample/xbyak`. First, let's compile and run the test code.
 
 ```sh
 $ cd xbyak_aarch64_handson
@@ -702,9 +540,9 @@ $ ./a.out
 1
 ```
 
-`a.out`を実行して`1`と表示されたら成功だ。なお、実行時にQEMUにオプションを指定する必要がない場合、このように直接`a.out`を実行して構わない。もちろん`a.out`はARM向けバイナリなので、QEMUを通じて実行されている(実行時にフックされる)。
+Note that even though `a.out` is a binary for ARM, you can run `a.out` directly without QEMU like this. Even if you don't specify QEMU explicitly, `a.out` is executed through QEMU.
 
-さて、ソースを見てみよう。
+Here is the source code.
 
 ```cpp
 #include <cstdio>
@@ -725,7 +563,7 @@ int main() {
 }
 ```
 
-ここで`mov(w0, 1)`の部分が関数の返り値を代入しているところだ。これを適当な値、例えば`mov(w0, 42)`にして、もう一度コンパイル、実行してみよう。
+Here, the `mov(w0, 1)` part is where the return value of the function is assigned. Let's change the return value of the function to another value, say 42. Replace the code with `mov(w0, 42)`, and compile and run it again.
 
 ```sh
 $ make
@@ -734,15 +572,13 @@ $ ./a.out
 42
 ```
 
-ちゃんと42が表示された。
+You will see `42` as the rsult.
 
-#### 2. 呼び出し規約の確認
+### 2. Calling convention
 
-Xbyakは「関数単位でフルアセンブリで記述する」ためのツールだ。アセンブリにおいて関数呼び出しとは単なるジャンプであり、またレジスタその他は全てグローバル変数であるから、関数の引数をどのように渡し、どのように値を返すか(呼び出し規約)はプログラマに任されている。しかし、C言語のような高級言語を使う場合、コンパイラごとに呼び出し規約が異なると、異なるコンパイラでコンパイルしたオブジェクトファイルがリンクできなくなって不便だ。そこで、それぞれのISAごとにバイナリレベルでのインターフェースを定めたのがApplication Binary Interface (ABI)である。ABIは様々なものを定めているが、呼び出し規約もABIが定めるものの一つだ。
+Xbyak is a tool for writing a function in full assembly. In assembly, function calls are jumps, and registers and other variables are all global variables, so it is up to the programmer to decide how to pass function arguments and how to return values. However, when using a high-level language such as C, it is inconvenient if each compiler has different calling conventions, because object files compiled by different compilers cannot be linked. The Application Binary Interface (ABI) defines binary-level interfaces for each ISA, and calling conventions are one of the many things defined by the ABI. In the following, we will take a brief look at the calling convention and how to write Xbyak.
 
-XbyakはC/C++からアセンブリで書かれた関数を呼び出すツールであるから、関数を記述するためには呼び出し規約をしらなければならない。呼び出し規約はISAごとに異なるし、場合によっては一つのISAに複数のABIが規定されている場合もある(参考：[Cの可変長引数とABIの奇妙な関係](https://qiita.com/qnighy/items/be04cfe57f8874121e76))。以下では、呼び出し規約とXbyakの書き方について簡単に見てみよう。
-
-`/sample/xbyak/02_abi`ディレクトリに、Xbyakのひな形として`abi.cpp`が置いてある。中身を見てみよう。
+In the directory `/sample/xbyak/02_abi`, there is `abi.cpp` as a template code of Xbyak.
 
 ```cpp
 #include <cstdio>
@@ -761,9 +597,9 @@ int main() {
 }
 ```
 
-Xbyakの作る関数は単に`ret`するだけで、それを`void f()`という関数と解釈するため、テンプレートに渡す関数の型は`void (*)()`になっている。まずはこれを、整数`1`を返す関数に修正してみよう。そのためには、AAarch64において整数をどのように返すか知らなければならない。もちろん公式ドキュメントを見ればちゃんと書いてあるが、いちいちそれを読むのは面倒だ。そこで、簡単なコードを書いてコンパイルして見よう。
+This code is a sample that creates and executes a function that does nothing but simply return when called. Since the signature of the function is `void f()`, we pass the type `void (*)()` to getCode. First, we will modify it to a function that returns an integer 1. To do this, we need to know how to return an integer in AAarch64. Of course, you can read [the official document](https://github.com/fujitsu/A64FX) (136 pages, wow!), but it's not practical to read or memorize it every time. Here it is easy to write a simple code and compile it. So, let's write some simple code and compile it to see the calling convention.
 
-以下のようなコードを書いてみよう。
+Consider a code like the following.
 
 ```cpp
 int func(){
@@ -771,7 +607,7 @@ int func(){
 }
 ```
 
-コンパイルしてアセンブリを吐かせる。
+Compile it and see the assembly.
 
 ```sh
 $ ag++ -S test.cpp
@@ -795,7 +631,7 @@ _Z4funcv:
         .section        .note.GNU-stack,"",@progbits
 ```
 
-これを見ると、整数は`w0`というレジスタに値を入れて返せばよいことがわかる。ここから、先ほどの`abi.cpp`を以下のように修正しよう。
+This shows that an integer should be returned by putting their value in the register `w0`. From here, we can see that we should modify `abi.cpp` as follows.
 
 ```cpp
 #include <cstdio>
@@ -803,20 +639,20 @@ _Z4funcv:
 
 struct Code : Xbyak_aarch64::CodeGenerator {
   Code() {
-    mov(w0, 1); // mov w0, 1に対応するXbyakのコード
+    mov(w0, 1); // mov w0, 1 
     ret();
   }
 };
 
 int main() {
   Code c;
-  auto f = c.getCode<int (*)()>(); //関数ポインタ型を int f()に対応するよう修正
+  auto f = c.getCode<int (*)()>(); // Fixed function pointer type to correspond to int f().
   c.ready();
-  printf("%d\n",f()); // f()の実行結果を表示
+  printf("%d\n",f()); // Display the result of f()
 }
 ```
 
-コンパイル、実行してみよう。
+Let's compile and run it.
 
 ```sh
 $ make
@@ -824,9 +660,9 @@ $ ./a.out
 1
 ```
 
-ちゃんと1が表示された。
+You will see 1 as the result.
 
-次は引数を受け取ってみよう。整数を受け取り、1だけ加算した値を返す関数を考える。例によってコンパイラにアセンブリを教えてもらおう。
+Next, let's take arguments. Let's consider a function that takes an integer and returns a value added by 1. As before, let's ask the compiler to tell us the assembly.
 
 ```cpp
 int func(int i){
@@ -834,14 +670,14 @@ int func(int i){
 }
 ```
 
-上記のコードを`ag++ -S`でコンパイルすると、対応するアセンブリが、
+If you compile the above code with `ag++ -S`, you will see that the corresponding assembly looks like the following.
 
 ```txt
   add w0, w0, 1
   ret
 ```
 
-であることがわかる。つまり、第一整数引数は`w0`に入ってくるので、それに`1`を追加した結果を`w0`に代入すればよい。対応するXbyakのコードは以下のようになるだろう。
+That is, the first integer argument comes in `w0`, so we should assign the result of adding `1` to it to `w0`. The corresponding code of Xbyak will be as follows.
 
 ```cpp
 #include <cstdio>
@@ -849,20 +685,20 @@ int func(int i){
 
 struct Code : Xbyak_aarch64::CodeGenerator {
   Code() {
-    add(w0, w0, 1); // 第一引数をw0で受け取り、1加算してからw0に値を入れる
+    add(w0, w0, 1);
     ret();
   }
 };
 
 int main() {
   Code c;
-  auto f = c.getCode<int (*)(int)>(); //関数ポインタ型を int f(int)に
-  printf("%d\n",f(1)); //f(1)を呼び出す
+  auto f = c.getCode<int (*)(int)>(); // the signature of function is changed to be `int f(int)`
+  printf("%d\n",f(1)); // call f(1)
   c.ready();
 }
 ```
 
-実行してみると2が表示される。
+You will see 2 as the results.
 
 ```sh
 $ make
@@ -870,7 +706,7 @@ $ ./a.out
 2
 ```
 
-全く同様に、二つ引数を受け取り、和を返す関数は以下のようにかける。
+In similar manner, we can write a function that takes two arguments and returns the sum as follows.
 
 ```cpp
 #include <cstdio>
@@ -885,15 +721,15 @@ struct Code : Xbyak_aarch64::CodeGenerator {
 
 int main() {
   Code c;
-  auto f = c.getCode<int (*)(int, int)>(); // int f(int, int)
-  printf("%d\n",f(3,4)); // 3+4を計算
+  auto f = c.getCode<int (*)(int, int)>(); // the signature is changed to be `int f(int, int)`
+  printf("%d\n",f(3,4)); // calculate 3+4
   c.ready();
 }
 ```
 
-実行結果は7になる。
+You will get 7 as a result of adding 3 to 4.
 
-ここでは整数を扱ったためにレジスタが`w0,w1`、加算命令が`add`だったが、レジスタを`d0, d1`、加算命令を`fadd`にすると、そのまま倍精度実数にすることができる。
+Since we treat integer operation here, he registers were `w0, w1` and the add instruction was `add`. If we change the registers to `d0, d1` and the add instruction to `fadd`, we can make it a double-precision version.
 
 ```cpp
 #include <cstdio>
@@ -909,20 +745,20 @@ struct Code : Xbyak_aarch64::CodeGenerator {
 int main() {
   Code c;
   auto f = c.getCode<double (*)(double, double)>(); // double f(double, double);
-  printf("%f\n",f(3.0,4.0)); // 3.0+4.0を計算
+  printf("%f\n",f(3.0,4.0)); // calculate 3.0+4.0
   c.ready();
 }
 ```
 
-実行結果は「7.000000」となるはずだ。
+You will see `7.000000` as the result.
 
-#### 3. ダンプの確認
+### 3. Display the assembler mnemonics generated by Xbyak
 
-Xbyakは、メモリ上にアセンブリ命令を置いて行って、その先頭アドレスから実行する仕組みだ。どのようなアセンブリ命令を置くかは、どのようなプログラムを組んだかによる。したがって、我々が組んでいるのは「アセンブリを出力するC/C++プログラム」、すなわちコードジェネレータである。
+Xbyak is a tool that puts assembly instructions in memory and executes them from the first address. What kind of assembly instructions are placed depends on the program you have created. Therefore, we are writing a C / C ++ program that outputs assembly, that is, a code generator.
 
-コードジェネレータにバグがあった場合、出力されたアセンブリを見ながらデバッグをしたい。そこで、Xbyakが生成したコードを逆アセンブルする方法を紹介する。サンプルコードは`sample/xbyak/03_dump/dump.cpp`だ。
+When there is a bug in the code generator, we want to debug it by looking at the output assembly. Therefore, we will see how to disassemble the code generated by Xbyak. The sample code is `sample/xbyak/03_dump/dump.cpp`.
 
-Xbyakにより生成された機械語を取得するには`Xbyak_aarch64::CodeGenerator::getCode()`を用いれば良い。また、機械語の長さは`getSize()`で取得できる。これを、名前をつけて保存をするメソッドを作っておこう。適当なコードを作成するXbyakのコードに、機械語保存用のメソッドを追加しておく。
+To get a machine language generated by Xbyak, use `Xbyak_aarch64::CodeGenerator::getCode()`. You can also get the length of a machine language with `getSize()`. Let's create a method to save it with a name. Add a method `dump` for saving the machine language to the Xbyak as follows.
 
 ```cpp
 #include <cstdio>
@@ -940,17 +776,9 @@ struct Code : Xbyak_aarch64::CodeGenerator {
 };
 ```
 
-これは、
+`void dump(const char *filename)` is the code to save the machine language created by Xbyak with a name.
 
-```cpp
-int f(int n){
-  return 1;
-}
-```
-
-に対応するアセンブリを生成するXbyakコードだ。いまは引数は使わないが、後のために`int`型の引数を受ける型にしておく。`void dump(const char *filename)`は、Xbyakが作成した機械語を名前をつけて保存するコードだ。
-
-Xbyakのコードを実行しつつ、その機械語も保存するコードは以下のように書ける。
+The code that executes the code generated by Xbyak, but also saves its machine language, can be written as follows.
 
 ```cpp
 int main() {
@@ -962,7 +790,7 @@ int main() {
 }
 ```
 
-実行してみよう。
+Here is the results.
 
 ```sh
 $ make
@@ -970,7 +798,7 @@ $ ./a.out
 1
 ```
 
-最初の`1`がXbyakが生成した関数の実行結果だ。引数を無視して1を返す関数になっている。Xbyakが生成した機械語は`xbyak.dump`という名前で保存されている。`objdump`に渡せば逆アセンブルできるが、ヘッダ情報がないために情報を教えてやる必要がある。
+The first `1` is the result of the function generated by Xbyak. The machine language generated by Xbyak is saved as `xbyak.dump`. You can disassemble it by passing it to `objdump`, but you need to give it some information because it has no header information.
 
 ```sh
 $ aarch64-linux-gnu-objdump -D -maarch64 -b binary -d xbyak.dump
@@ -985,19 +813,21 @@ Disassembly of section .data:
    4:   d65f03c0        ret
 ```
 
-意図の通り、`mov w0, 1; ret`しているコードが生成されている。いちいち`aarch64-linux-gnu-objdump -D -maarch64 -b binary -d`と入力するのは面倒なので、以下のaliasが`.bashrc`に定義されている。
+You can see that the code that `mov w0, 1; ret` is generated as intended.
+
+Since it is troublesome to type `aarch64-linux-gnu-objdump -D -maarch64 -b binary -d` every time, the following alias is defined in `.bashrc`.
 
 ```sh
 alias xdump="aarch64-linux-gnu-objdump -D -maarch64 -b binary -d"
 ```
 
-以下のように使うことができる。
+You can use it as follows.
 
 ```sh
 xdump xbyak.dump
 ```
 
-さて、Xbyakがコードを動的に生成する様を見てみよう。引数を無視していた関数を、1をn回加算して返す関数に修正する(dump部分は省略)。
+Now, let's see how Xbyak generates code dynamically. Modify the function so that adds 1 to n times and returns it.
 
 ```cpp
 struct Code : Xbyak_aarch64::CodeGenerator {
@@ -1010,11 +840,11 @@ struct Code : Xbyak_aarch64::CodeGenerator {
 };
 ```
 
-コンストラクタ`Code`で`int n`を受け取り、その回数だけ`add(w0, w0, 1);`を繰り返している。`Code`のインスタンスを作るところで、`Code c(3);`と繰り返し回数を指定してやろう。
+The constructor `Code` recieves `int n` and repeats `add(w0, w0, 1);` as many times as it takes. Specify the number of iterations as `Code c(3);`.
 
 ```cpp
 int main() {
-  Code c(3); // ←ここを修正
+  Code c(3); // Modified here
   auto f = c.getCode<int (*)(int)>();
   c.ready();
   printf("%d\n", f(10));
@@ -1022,7 +852,7 @@ int main() {
 }
 ```
 
-コンパイル、実行してみる。
+You can build and run as follows.
 
 ```sh
 $ make
@@ -1030,7 +860,7 @@ $ ./a.out
 13
 ```
 
-実行結果として、10に三回1を足された13が表示された。逆アセンブルしてみよう。
+As a result of execution, 13 which is the number of 10 plus 1 three times was displayed. Here are the assembly codes.
 
 ```sh
 $ xdump xbyak.dump
@@ -1047,11 +877,11 @@ Disassembly of section .data:
    c:   d65f03c0        ret
 ```
 
-意図通り、3回`add`するコードになっている。これは実行時に生成されているため、コンパイル時に確定してなくても良い。標準入力から食わせて見よう。
+As intended, the code execute `add` three times. This is generated at runtime, so it doesn't have to be fixed at compile time. Let's feed it from the standard input.
 
 ```cpp
-int main(int argc, char **argv) { // コマンドライン引数の受け取り
-  Code c(atoi(argv[1]));          // それをXbyakに渡す
+int main(int argc, char **argv) {
+  Code c(atoi(argv[1]));
   auto f = c.getCode<int (*)(int)>();
   c.ready();
   printf("%d\n", f(10));
@@ -1059,7 +889,7 @@ int main(int argc, char **argv) { // コマンドライン引数の受け取り
 }
 ```
 
-実行し、逆アセンブルしてみよう。
+You can feed any number, say 5.
 
 ```sh
 $ ./a.out  5
@@ -1081,29 +911,29 @@ Disassembly of section .data:
   14:   d65f03c0        ret
 ```
 
-Xbyakが動的にコードを生成しているのがわかったかと思う。
+You can see that Xbyak generates code dynamically.
 
-#### 4. XbyakでFizzBuzz
+### 4. Fizz Buzz Implementation with Xbyak
 
-最後に、あまり実用的ではないがもう少し非自明な例として、XbyakでFizzBuzzをやってみよう。せっかくなので、SVEを使って一気に処理することを考える。`int32_t`型の整数を格納した配列に対して、3の倍数なら-1を、5の倍数なら-2を、15の倍数なら-3を書き込む処理をもって、FizzBuzzを表現する。処理するデータは`int32_t`型の`std::vector`として、その先頭アドレスをXbyakで作る関数の引数として渡す。
+Finally, let's try to write FizzBuzz with Xbyak. As in the example of instrinsic functions, FizzBuzz is expressed by writing -1 for multiples of 3, -2 for multiples of 5, and -3 for multiples of 15 to an array of integers of type `int32_t`. The data are stored in `std::vector` of the type `int32_t`, and the first address is passed as an argument of the function made by Xbyak.
 
-方針は以下の通り。
+The algorithm is as follows.
 
-* `p0`を全てtrueにしておく。
-* 予め、全ての要素を「-1」「-2」「-3」「3」「5」で初期化したレジスタを用意しておく(順番に`z1`から`z5`)。
-* `z0`レジスタに配列の値をまとめてロードする。`int32_t`を使うので、一度に16要素をロードすることができる。
-* `z0`レジスタを`z7`レジスタにコピー
-* `z7`レジスタの全要素を3で割ってから3をかける(`sdiv`と`mul`)。
-* `z7`レジスタと`z0`レジスタを比較し、一致している場所のビットを立てたマスクを作って`p1`に入れる
-* `z1`レジスタを`p1`レジスタをマスクとして、配列のアドレスに書き戻す (Fizz)
-* Buzzも同様に計算し、マスク情報を`p2`に入れて書き戻す。
-* FizzBuzzは、マスク情報`p1`と`p2`論理積をとったものを`p3`に入れて、そのマスクを使って`-3`を書き戻せばよい。
+* Set all bits of `p0` to true.
+* Prepare registers with all elements initialized with `-1`, `-2`, `-3`, `3`, and `5` (in order, `z1` to `z5`).
+* Load the values of the array to the register `z0`. Since `int32_t` is used, 16 elements can be loaded at a time (when the SVE register is 512-bit-width).
+* Copy the `z0` register to the `z7` register.
+* Divide all elements in the `z7` register by 3, then multiply by 3 (use `sdiv` and `mul`).
+* Compare the `z7` register with the `z0` register, make a mask with the bits of the matching places up and put it in `p1`.
+* Write the `z1` register back to the address of the array with the `p1` register as a mask (Fizz).
+* Buzz is calculated in the same way, and the mask information is put into `p2` and written back.
+* For FizzBuzz, put the mask information `p1` and `p2` logical conjunction (AND) into `p3`, and write back `-3` using the mask.
 
-効率は良くないコードだが、SVEを使って一気に複数要素処理するのと、プレディケートレジスタを使ったマスクストア、さらにプレディケートレジスタの論理演算が入っているので、XbyakでSVEを触る練習にはよいかと思う。
+Although the code is not very efficient, it is good for practicing SVE with Xbyak because it contains processing multiple elements at once using SVE, mask store using predicate registers, and logical operations with predicate registers.
 
-ソースコードは`/sample/xbyak/04_fizzbuzz`ディレクトリの`fizzbuzz.cpp`にある。
+The source code is in `fizzbuzz.cpp` in the directory `/sample/xbyak/04_fizzbuzz`.
 
-最初に、レジスタに`int32_t`型の変数が何個入るかを取得するXbyakのコードを作る。
+First, make the code of Xbyak to get how many variables of type `int32_t` are in the SVE register.
 
 ```cpp
 struct Cntw : Xbyak_aarch64::CodeGenerator {
@@ -1114,7 +944,7 @@ struct Cntw : Xbyak_aarch64::CodeGenerator {
 };
 ```
 
-単に`cntw`を呼び出し、`x0`に入れているだけだ。以下のようにして要素数を取得できる。
+It simply calls `cntw` and puts it in `x0`. You can get the number of elements as follows.
 
 ```cpp
   Cntw cw;
@@ -1122,25 +952,25 @@ struct Cntw : Xbyak_aarch64::CodeGenerator {
   printf("Number of int32_t in a register is %d.\n",nw);
 ```
 
-Xbyakで作るFizzBuzz関数のシグネチャは、
+The signature of the FizzBuzz function generated by Xbyak is as follows.
 
 ```cpp
 void f(int32_t *);
 ```
 
-とする。そのため、Xbyakの`getCode`での受け方は
+Therefore, the type passed to getCode is as follows.
 
 ```cpp
 auto f = c.getCode<void (*)(int32_t *)>();
 ```
 
-となる。取得した関数は以下のように呼び出す。`a`は`std::vector<int32_t>`型の変数だ。
+The generated function can be called as follows. `a` is a variable of type `std::vector<int32_t>`.
 
 ```cpp
 f(a.data());
 ```
 
-`a`には正の整数が格納されており、`f`を呼び出すと3の倍数が-1に、5の倍数が-2に、15の倍数が-3に書き換わる。そんな関数`f`を作るXbyakのコードは以下の通り。
+Positive integers are stored in the vector `a`, and when `f` is called, multiples of 3 are rewritten to -1, multiples of 5 to -2, and multiples of 15 to -3, respectively. The code of Xbyak to make such a function `f` is as follows.
 
 ```cpp
   Code(int n, int nw) {
@@ -1189,73 +1019,73 @@ f(a.data());
 };
 ```
 
-少しずつ説明しよう。
+Let me explain step by step.
 
-まず、コンストラクタで要素数`n`と、レジスタあたりの要素数`nw`を受け取り、その分、ループを展開したコードを生成する。これらの引数はコードジェネレータのための引数であり、Xbyakが作る関数の引数ではないことに注意。
+First, it takes the number of elements `n` and the number of elements per register `nw` in the constructor, and generates the code that expands the loop by that amount. Note that these arguments are for the code generator, not for the function generated by Xbyak.
 
-最初に使うレジスタの初期化をしておく。
+We prepare the registers that store the constants.
 
 ```cpp
-ptrue(p0.s);    // p0を全て真に
-dup(z1.s, -1);  // z1を全て-1に
-dup(z2.s, -2);  // z2を全て-2に
-dup(z3.s, -3);  // z3を全て-3に
-dup(z4.s, 3);   // z4を全て3に
-dup(z5.s, 5);   // z5を全て5に
+ptrue(p0.s);    // all true
+dup(z1.s, -1);  // filled with -1
+dup(z2.s, -2);  // filled with -2
+dup(z3.s, -3);  // filled with -3
+dup(z4.s, 3);   // filled with 3
+dup(z5.s, 5);   // filled with 5
 ```
 
-関数`f`には、`f(a.data())`と、`a`の先頭アドレスが渡されてくる。このアドレスは`x0`に入っており、それを使って`ld1w`命令で`z0`レジスタにデータを一度にロードする。この時、全部持ってくるので、全てが真になっている`p0`を使う。
+The function `f` is passed `f(a.data())` and the first address of `a`. This address is in `x0`, and we use it to load data into the `z0` register with the `ld1w` instruction. At this time, since we bring all the data, we use `p0`, where all the data is true.
 
 ```cpp
 ld1w(z0.s, p0, ptr(x0));
 ```
 
-こうして、`z0`に`a`の要素がまとめて格納される。
+The elements of `a` are now stored together in `z0`.
 
-次に、`z0`の値を`z7`にコピーする。
+Next, copy the value of `z0` to `z7`.
 
 ```cpp
 mov(z7.s, p0, z0.s);
 ```
 
-`z7`の要素を、全て3で割ってから3をかける。要素が全て3のレジスタ`z4`を用意しているので、これで割ってかければよい。
+Divide all the elements of `z7` by 3, and then multiply by 3. We have a register `z4` whose elements are all 3, so we can use it.
 
 ```cpp
 sdiv(z7.s, p0.s, z4.s);
 mul(z7.s, p0.s, z4.s);
 ```
 
-3で割って(小数点以下切り捨て)3をかけたので、例えば`z0`の要素が「1,2,3,4」であったならば、`z7`の要素は「0,0,3,3」になる。この`z0`と`z7`を比較してマスクを作る。ここでは、要素が等しいところが「Fizz」なので、`cmpeq`を使おう。
+We divide the elements by 3 (rounded down to the nearest whole number) and multiply by 3. So for example, if the register `z0` stores "1,2,3,4", then values in `z7` will be "0,0,3,3". We make a mask by comparing these `z0` and `z7` with `cmpeq.
 
 ```cpp
 cmpeq(p1.s, p0, z0.s, z7.s);
 ```
 
-こうして、プレディケートレジスタ`p1`には「0010」というビットが立った。このビットを使って、配列`a`のアドレスに「-1,-1,-1,-1」というデータを書き込もう。全ての要素を-1に初期化しておいたレジスタ`z1`を使う。
+Then the predicate register `p1` will be `0010`. We can use it as a mask to write the data "-1,-1,-1,-1" to the address of array `a`. Use the register `z1` with all elements initialized to -1.
 
 ```cpp
 st1w(z1.s, p1, ptr(x0));
 ```
 
-こうして、もともと「1,2,3,4」だったデータが「1,2,-1,4」となった。全く同様にBuzzの処理もできる。
+In this way, the data that was originally "1,2,3,4" became "1,2, -1,4". You can handle Buzz in exactly the same way.
 
-次にFizzBuzz、つまり15で割り切れる場所のマスクだが、3で割りきれる場所のプレディケートレジスタ`p1`と、5で割り切れる場所`p2`を作ってあるので、その論理積(AND)をとれば、15で割り切れる場所`p3`を作ることができる。
+Next, we will make a mask for FizzBuzz, i.e., a place divisible by 15. Since we already have the predicate register `p1`, which stores the positions for divisible by 3 and the register `p2` for divisible by 5, we can make a mask that stores the positions for divisible by 15 `p3` by performing logical conjunction between `p1` and `p2`.
 
 ```cpp
 and_(p3.b, p0, p1.b, p2.b);
 ```
 
-`and`は予約語なので、Xbyakは名前を`and_`としているようだ。あとは同様に`-3`を書き戻せばよい。これで1要素分は完了だ。
+Since `and` is a reserved word, Xbyak seems to name it `and_`. Then, you can write back `-3` in the same way.
 
-最後に、読み書きするアドレスが格納されたレジスタ`x0`の値を、レジスタあたりの要素数*4バイト(=`sizeof(int32_t)`)だけずらす。
+Finally, shift the value of register `x0`, which is the address to be read or written, by the number of elements per register * 4 bytes (= `sizeof(int32_t)`).
 
 ```cpp
 adds(x0, x0, nw*4);
 ```
 
-これを必要な回数だけ繰り返すことで、全ての要素に対する処理が完成する。Xbyakでループを作っても良いが、ここではJITらしく、ループを完全にアンロールしてみた。
+Repeat this as many times as necessary to complete the process for all the elements. While we can create a loop with Xbyak, let's unroll the loop completely to take advantage of the JIT.
 
-コンパイル、実行してみよう。
+You will obtain the following results by compiling and executing the code.
 
 ```sh
 $ make
@@ -1295,7 +1125,7 @@ FizzBuzz
 32
 ```
 
-できているようだ。Xbyakが吐いたコードも見てみよう。
+Let's also take a look at the machine language generated by Xbyak.
 
 ```sh
 $ xdump xbyak.dump
@@ -1343,9 +1173,9 @@ Disassembly of section .data:
   88:   d65f03c0        ret
 ```
 
-Xbyakで作ったコードが二倍展開されていることがわかる。
+You can see that the code created by Xbyak has been doubly expanded.
 
-今の結果はレジスタが512ビットの場合の結果だが、レジスタが128ビットの場合や256ビットの場合も試すことができる。
+The current result is for 512-bit registers, but you can also try it for 128-bit and 256-bit registers.
 
 ```sh
 $ make run128
@@ -1365,96 +1195,8 @@ Fizz
 (snip)
 ```
 
-それぞれ実行した直後に`xbyak.dump`を逆アセンブルしてみると、ループが8倍展開、4倍展開されており、動的にスケーラブル(?)なコードが作成されていることが確認できる。
-
-## Dockerfileについて
-
-Dockerイメージが[/hub.docker.com/r/kaityo256/xbyak_aarch64_handson](https://hub.docker.com/r/kaityo256/xbyak_aarch64_handson)に公開されているので、そのまま`docker pull`や`docker run`ができるが、イメージを修正したい人向けにDockerfileの中身について簡単に説明しておく。`docker`ディレクトリの中に入って`make`するとビルド、`make run`すると中に入ることができる。
-
-### ディストリビューション
-
-```Dockerfile
-FROM archlinux
-```
-
-ある程度新しいGCCでないとARM SVE組み込み関数に対応しておらず、パッケージマネージャで簡単にインストールできるディストリビューションが(少なくとも試した当時は)ArchLinuxしかなかったため、ArchLinuxを使っている。
-
-### 環境変数の設定
-
-あとで使う環境変数をいくつか設定してある。
-
-```Dockerfile
-ENV USER user
-ENV HOME /home/${USER}
-ENV SHELL /bin/bash
-ENV GIT_REPOSITORY kaityo256/xbyak_aarch64_handson
-```
-
-### ユーザ追加
-
-```Dockerfile
-RUN useradd -m ${USER}
-RUN echo 'user:userpass' | chpasswd
-RUN echo 'root:root' | chpasswd
-```
-
-デフォルトユーザである`user`と、後で必要になった時のために`root`パスワードを`root`に設定してある。
-
-### パッケージのインストール
-
-```Dockerfile
-RUN sed -i '1iServer = https://ftp.jaist.ac.jp/pub/Linux/ArchLinux/$repo/os/$arch' /etc/pacman.d/mirrorlist
-RUN pacman -Syyu --noconfirm && \
-  pacman -S --noconfirm \
-  aarch64-linux-gnu-gcc \
-  git \
-  make \
-  vim \
-  qemu \
-  qemu-arch-extra
-```
-
-ArchLinuxのパッケージマネージャは`pacman`だ。例えばパッケージのアップデート(`yum update`や`apt update && apt upgrade`にあたるもの)は`pacman -Syyu`である。通常は「インストールしますか？」と聞いてくるので、それを防ぐために`--noconfirm`をつけている。
-
-パッケージのアップデート、インストールの前に、`/etc/pacman.d/mirrorlist`の先頭に`Server = https://ftp.jaist.ac.jp/pub/Linux/ArchLinux/$repo/os/$arch`を追加することでミラーとしてJAISTを指定している。これをしないとダウンロード中にpacmanがタイムアウトしてDockerファイルのビルドに失敗することがある。
-
-```Dockerfile
-RUN ln -s /usr/sbin/aarch64-linux-gnu-ar /usr/sbin/ar
-RUN ln -s /usr/sbin/aarch64-linux-gnu-g++ /usr/sbin/g++
-```
-
-後でXbyakのライブラリをビルドするのに、Xbyakが`g++`や`ar`をネイティブであることを前提に呼び出しているので、それに合わせてクロスコンパイラ`aarch64-linux-gnu-g++`を`g++`に、クロスアーカイバ`aarch64-linux-gnu-ar`を`ar`にそれぞれシンボリックリンクをはっている。ad hocな対応だが、ネイティブなg++は使わないことと、Makefileをsedで書き換えるのもad hocさでは似たようなものだと思ってこの対応とした。
-
-### デフォルトユーザの設定
-
-```Dockerfile
-USER ${USER}
-WORKDIR /home/${USER}
-```
-
-ずっとrootで作業するのも気持ち悪いので、デフォルトユーザを設定している。
-
-### 開発環境の準備
-
-```sh
-RUN echo 'alias vi=vim' >> /home/${USER}/.bashrc
-RUN echo 'alias ag++="aarch64-linux-gnu-g++ -static -march=armv8-a+sve -O2"' >> /home/${USER}/.bashrc
-RUN echo 'alias gp="git push https://${GIT_USER}:${GIT_TOKEN}@github.com/${GIT_REPOSITORY}"' >> /home/${USER}/.bashrc
-RUN echo 'alias xdump="aarch64-linux-gnu-objdump -D -maarch64 -b binary -d"' >> /home/${USER}/.bashrc
-RUN echo 'export CPLUS_INCLUDE_PATH=/home/user/xbyak_aarch64_handson/xbyak_aarch64' >> /home/${USER}/.bashrc
-COPY dot.vimrc /home/${USER}/.vimrc
-COPY dot.gitconfig /home/${USER}/.gitconfig
-```
-
-開発に必要な設定。クロスコンパイラまわりはコマンドも長いしオプションも長いので、コンパイルコマンドは`ag++`、`objdump`は`xdump`としてエイリアスを設定してある。`CPLUS_INCLUDE_PATH`にXbyakのヘッダを探すパスを設定している。`gp`はDocker内部から`git push`するための設定なので無視してかまわない。Vimの設定にこだわりがある人は`dot.vimrc`を修正すれば、コンテナの中に持ち込むことができる。
-
-```Dockerfile
-RUN git clone --recursive https://github.com/kaityo256/xbyak_aarch64_handson.git
-RUN cd xbyak_aarch64_handson/xbyak_aarch64;make
-```
-
-最後に、コンテナ内でこのリポジトリをクローンしている。サブモジュールとしてxbyak_aarch64を登録しているので、`--recursive`オプションをつけている。そして、`libxbyak_aarch64.a`をビルドするために`make`している。
+If you disassemble `xbyak.dump` after each execution, you can see that the loops are expanded 8 times and 4 times, it shows that the scalable codes are generated dynamically.
 
 ## Licence
 
-コードはMIT。スライドはCC-BY 4.0。
+MIT
