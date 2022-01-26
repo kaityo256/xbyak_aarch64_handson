@@ -140,9 +140,7 @@ Xbyakを使ったコーディングは、関数単位でフルアセンブリで
 
 ## ハンズオン編
 
-### Dockerイメージのビルドと動作確認
-
-#### Dockerイメージのビルド
+### Dockerイメージのビルド
 
 SVE命令を使うクロスコンパイラや、QEMUで実行できる環境がDockerファイルとして用意してある。
 
@@ -174,9 +172,13 @@ docker run -e GIT_USER= -e GIT_TOKEN= -it kaityo256/xbyak_aarch64_handson
 
 環境変数`GIT_USER`や`GIT_TOKEN`は開発用に渡しているものなので気にしないで欲しい。デフォルトで`user`というアカウントでログインするが、`root`というパスワードで`su -`できるので、必要なパッケージがあれば適宜`pacman`でインストールすること。
 
-#### 組み込み関数のテスト
+### 組み込み関数
 
-Dockerイメージの中に入ったら、`xbyak_aarch64_handson/sample`の中にサンプルコードがある。最初に、ARM SVE向けの組み込み関数`svcntb`をコンパイル、実行できるか確認してみよう。コードは`intrinsic/01_sve_length`の中にあり、`make`すればビルド、`make run`すれば実行できる。
+#### 1. SVEの長さ
+
+SVEは「Scalable」つまり、ベクトル長がコンパイル時に決定せず、実行時に決まる。まずはその様子を見てみよう。Dockerイメージの中に入ったら、`xbyak_aarch64_handson/sample`の中にサンプルコードがある。
+
+コードは`intrinsic/01_sve_length`の中にあり、`make`すればビルド、`make run`すれば実行できる。
 
 ```sh
 $ cd xbyak_aarch64_handson
@@ -209,58 +211,42 @@ $ qemu-aarch64 -cpu max,sve512=on ./a.out
 SVE is available. The length is 512 bits
 ```
 
-#### Xbyak_aarch64のテスト
-
-次に、Xbyak_aarch64の動作テストをしてみよう。Xbyakのサンプルコードはリポジトリの`sample/xbyak`以下にある。まずはテストコードをコンパイル、実行してみよう。
+上記でコンパイル、実行したソースコードは以下の通り(`sve_length.cpp`)。
 
 ```sh
-$ cd xbyak_aarch64_handson
-$ cd sample
-$ cd xbyak
-$ cd 01_test
-$ make
-aarch64-linux-gnu-g++ -static test.cpp -L/home/user/xbyak_aarch64_handson/xbyak_aarch64/lib -lxbyak_aarch64
-$ ./a.out
-1
-```
-
-`a.out`を実行して`1`と表示されたら成功だ。なお、実行時にQEMUにオプションを指定する必要がない場合、このように直接`a.out`を実行して構わない。もちろん`a.out`はARM向けバイナリなので、QEMUを通じて実行されている。
-
-さて、ソースを見てみよう。
-
-```cpp
 #include <cstdio>
-#include <xbyak_aarch64/xbyak_aarch64.h>
-
-struct Code : Xbyak_aarch64::CodeGenerator {
-  Code() {
-    mov(w0, 1);
-    ret();
-  }
-};
+#ifdef __ARM_FEATURE_SVE
+#include <arm_sve.h>
+#endif
 
 int main() {
-  Code c;
-  auto f = c.getCode<int (*)()>();
-  c.ready();
-  printf("%d\n", f());
+  int n = 0;
+#ifdef __ARM_FEATURE_SVE
+  n = svcntb() * 8;
+#endif
+  if (n) {
+    printf("SVE is available. The length is %d bits\n", n);
+  } else {
+    printf("SVE is unavailable.\n");
+  }
 }
 ```
 
-ここで`mov(w0, 1)`の部分が関数の返り値を代入しているところだ。これを適当な値、例えば`mov(w0, 42)`にして、もう一度コンパイル、実行してみよう。
+ARM SVEが利用可能かどうかは、`__ARM_FEATURE_SVE`マクロが定義されているかどうかでわかる。もし`__ARM_FEATURE_SVE`が定義されていたら、`arm_sve.h`をインクルードすることで組み込み関数が利用可能だ。
+
+ベクトル長は`svcntb()`で取得できる。これはベクトル長をバイト単位で返す関数なので、8倍するとビット長となる。対応するアセンブリは`cntb`だ。ACLE SVE関数は、`sv`という接頭辞に、対応するアセンブリの命令をつなげたものであることが多い。
+
+SVEを有効にするためには、`-march=armv8-a+sve`オプションをつけてコンパイルする必要がある。このオプションをつけないと、 `__ARM_FEATURE_SVE`が定義されない。実際にコンパイルして見てみよう。
 
 ```sh
-$ make
-aarch64-linux-gnu-g++ -static test.cpp -L/home/user/xbyak_aarch64_handson/xbyak_aarch64/lib -lxbyak_aarch64
-$ ./a.out
-42
+$ aarch64-linux-gnu-g++ -static sve_length.cpp
+$ qemu-aarch64 ./a.out
+SVE is unavailable.
 ```
 
-ちゃんと42が表示された。
+`__ARM_FEATURE_SVE`が定義されていないため、「SVEは使えないよ」という結果が表示された。
 
-### 組み込み関数
-
-#### プレディケートレジスタ
+#### 2. プレディケートレジスタ
 
 SVEはSIMD幅を固定しない命令セットであるから、基本的にマスクレジスタを使ったマスク処理を使うことになる。AArch64にはマスク処理のためにプレディケート物理レジスタ(predicator physical register, ppr)が48本用意されており、そのうち16本がユーザから見える(残りはレジスタリネーミングに使われる)。個人的にSVEを使うキモはプレディケートレジスタにあると考える。そこで、まずは組み込み関数を使ってプレディケートレジスタの振る舞いを調べてみよう。
 
@@ -401,7 +387,7 @@ svptrue_pat_b64(SV_VL2)
 
 コードは`make`でビルド、`make run`で実行できるが、`make run128`とすると、レジスタが128ビットの場合の実行結果が、`make run256`とすると、256ビットの時の実行結果を得ることができる。
 
-#### レジスタへのロードと演算
+#### 3. レジスタへのロードと演算
 
 SIMD命令を使うためには、SIMDレジスタにデータをロードしてやらなければならない。SVEは長さが固定されていないため、原則として一次元的に並んだデータを順番にレジスタにロードすることになる。以下では、レジスタの中身を可視化してやることで、レジスタへのロードと演算がどうなっているか、特にSIMDにより1命令で一気に複数の演算ができること、プレディケートレジスタによりマスク処理ができることまで確認しておく。
 
@@ -499,9 +485,62 @@ va + vb = +7.0000000 +6.0000000 +5.0000000 +4.0000000 +3.0000000 +2.0000000 +2.0
 
 このディレクトリにも`make run128`、`make run256`などが用意されているので、レジスタ長さが変わったらどのように実行結果が変わるのか確認してみて欲しい。SVEではこのように可変長のSIMDレジスタに対して、マスク処理を駆使したコードを組んでいくことになる。
 
+#### 4. FizzBuzz
+
+もう少し実践的なコード例として、FizzBuzzを組んでみよう。あらかじめ配列に整数を入れておき、3の倍数なら-1を、5の倍数なら-2を、15の倍数なら-3を代入するコードを考える。シリアルコードとしては、以下のようなイメージだ。
+
 ### Xbyak_aarch64
 
-#### 呼び出し規約の確認
+#### 1. テスト
+
+まずはXbyak_aarch64の動作テストをしてみよう。Xbyakのサンプルコードはリポジトリの`sample/xbyak`以下にある。まずはテストコードをコンパイル、実行してみよう。
+
+```sh
+$ cd xbyak_aarch64_handson
+$ cd sample
+$ cd xbyak
+$ cd 01_test
+$ make
+aarch64-linux-gnu-g++ -static test.cpp -L/home/user/xbyak_aarch64_handson/xbyak_aarch64/lib -lxbyak_aarch64
+$ ./a.out
+1
+```
+
+`a.out`を実行して`1`と表示されたら成功だ。なお、実行時にQEMUにオプションを指定する必要がない場合、このように直接`a.out`を実行して構わない。もちろん`a.out`はARM向けバイナリなので、QEMUを通じて実行されている(実行時にフックされる)。
+
+さて、ソースを見てみよう。
+
+```cpp
+#include <cstdio>
+#include <xbyak_aarch64/xbyak_aarch64.h>
+
+struct Code : Xbyak_aarch64::CodeGenerator {
+  Code() {
+    mov(w0, 1);
+    ret();
+  }
+};
+
+int main() {
+  Code c;
+  auto f = c.getCode<int (*)()>();
+  c.ready();
+  printf("%d\n", f());
+}
+```
+
+ここで`mov(w0, 1)`の部分が関数の返り値を代入しているところだ。これを適当な値、例えば`mov(w0, 42)`にして、もう一度コンパイル、実行してみよう。
+
+```sh
+$ make
+aarch64-linux-gnu-g++ -static test.cpp -L/home/user/xbyak_aarch64_handson/xbyak_aarch64/lib -lxbyak_aarch64
+$ ./a.out
+42
+```
+
+ちゃんと42が表示された。
+
+#### 2. 呼び出し規約の確認
 
 Xbyakは「関数単位でフルアセンブリで記述する」ためのツールだ。アセンブリにおいて関数呼び出しとは単なるジャンプであり、またレジスタその他は全てグローバル変数であるから、関数の引数をどのように渡し、どのように値を返すか(呼び出し規約)はプログラマに任されている。しかし、C言語のような高級言語を使う場合、コンパイラごとに呼び出し規約が異なると、異なるコンパイラでコンパイルしたオブジェクトファイルがリンクできなくなって不便だ。そこで、それぞれのISAごとにバイナリレベルでのインターフェースを定めたのがApplication Binary Interface (ABI)である。ABIは様々なものを定めているが、呼び出し規約もABIが定めるものの一つだ。
 
@@ -681,7 +720,7 @@ int main() {
 
 実行結果は「7.000000」となるはずだ。
 
-#### ダンプの確認
+#### 3. ダンプの確認
 
 Xbyakは、メモリ上にアセンブリ命令を置いて行って、その先頭アドレスから実行する仕組みだ。どのようなアセンブリ命令を置くかは、どのようなプログラムを組んだかによる。したがって、我々が組んでいるのは「アセンブリを出力するC/C++プログラム」、すなわちコードジェネレータである。
 
@@ -848,7 +887,7 @@ Disassembly of section .data:
 
 Xbyakが動的にコードを生成しているのがわかったかと思う。
 
-#### XbyakでFizzBuzz
+#### 4. XbyakでFizzBuzz
 
 最後に、あまり実用的ではないがもう少し非自明な例として、XbyakでFizzBuzzをやってみよう。せっかくなので、SVEを使って一気に処理することを考える。`int32_t`型の整数を格納した配列に対して、3の倍数なら-1を、5の倍数なら-2を、15の倍数なら-3を書き込む処理をもって、FizzBuzzを表現する。処理するデータは`int32_t`型の`std::vector`として、その先頭アドレスをXbyakで作る関数の引数として渡す。
 
