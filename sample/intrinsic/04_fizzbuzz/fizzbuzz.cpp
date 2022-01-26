@@ -34,20 +34,21 @@ int main() {
     a[i] = i + 1;
   }
 
+
+  svbool_t tp = svptrue_b32();
+  svint32_t vf = svdup_n_s32_x(tp, -1);
+  svint32_t vb = svdup_n_s32_x(tp, -2);
+  svint32_t vfb = svdup_n_s32_x(tp, -3);
+
+  svint32_t v3 = svdup_n_s32_x(tp, 3);
+  svint32_t v5 = svdup_n_s32_x(tp, 5);
+  svint32_t v15 = svdup_n_s32_x(tp, 15);
+
   int w = svcntw();
   int s = 0;
+
   while (s + w <= n) {
     svint32_t va = svld1_s32(svptrue_b32(), a.data() + s);
-
-    svbool_t tp = svptrue_b32();
-
-    svint32_t vf = svdup_n_s32_x(tp, -1);
-    svint32_t vb = svdup_n_s32_x(tp, -2);
-    svint32_t vfb = svdup_n_s32_x(tp, -3);
-
-    svint32_t v3 = svdup_n_s32_x(tp, 3);
-    svint32_t v5 = svdup_n_s32_x(tp, 5);
-    svint32_t v15 = svdup_n_s32_x(tp, 15);
 
     svint32_t vr;
     svbool_t pg;
