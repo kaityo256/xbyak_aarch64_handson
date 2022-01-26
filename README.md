@@ -4,22 +4,21 @@
 
 ## Summary
 
-This is a hands-on document for people who don't have an actual machine to try Arm SVE on Docker.
-
-To have an environment to try Arm SVE with QEMU, just run the following command.
+This document is a hans-on for people who want to try Arm SVE on Docker. To have an environment to try Arm SVE with QEMU, just run the following.
 
 ```sh
 docker run -it kaityo256/xbyak_aarch64_handson
 ```
 
-Once the container process is up, you will see a screen like the one below.
+Then you will see something like this.
 
 ```sh
-$ docker run -it kaityo256/xbyak_aarch64_handson
 [user@2cd82e1ea4e3 ~]$
 ```
 
-This is an image of ArchLinux with the necessary software pre-installed. In the following, you will try ARM SVE with intrinsic functions and Xbyak_aarch64.
+Now you are in an image of ArchLinux with the necessary software pre-installed. You will logged in as the account `user`. But you can `su -` with the password `root`. So if you need any package, install it with `pacman`.
+
+In the following, you will try ARM SVE with intrinsic functions and Xbyak_aarch64.
 
 ## Contribution
 

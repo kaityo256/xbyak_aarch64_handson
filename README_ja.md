@@ -74,7 +74,7 @@ g++ test.cpp -lxbyak_aarch64
 objdump -D -maarch64 -b binary xbyak.dump
 ```
 
-`.bashrc`か何かで以下のエイリアスをはっておくと便利かもしれない。
+`.bashrc`か何かで以下のエイリアスをはっておくと便利かもしれない(Dockerイメージではalias設定済み)。
 
 ```sh
 alias xdump='objdump -D -maarch64 -b binary'
