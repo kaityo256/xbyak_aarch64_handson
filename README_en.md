@@ -313,9 +313,209 @@ In SVE, you need to code for variable length SIMD registers like this, making fu
 
 ### 4. Fizz Buzz Implementation with ACLE SVE
 
-Let's try FizzBuzz as a sample of ACLE SVE. Instead of displaying as Fizz or Buzz, we replace elements with -1, -2, or -3 when they are multiple of 3, 5, or 15, respectively.
+Let's try to write FizzBuzz as an example of code that makes full use of scalable SIMD registers and mask operations. Instead of displaying as Fizz or Buzz, we replace elements with -1, -2, or -3 when they are multiple of 3, 5, or 15, respectively.
 
-The sample code is in `sample/intrinsic/04_fizzbuzz`.
+The serial code looks like this.
+
+```cpp
+#include <cstdio>
+#include <vector>
+
+int main() {
+  // init
+  const int n = 32;
+  std::vector<int32_t> a(n);
+  for (int i = 0; i < n; i++) {
+    a[i] = i + 1;
+  }
+  // FizzBuzz
+  for (int i = 0; i < n; i++) {
+    if (a[i] % 15 == 0) {
+      a[i] = -3;
+    } else if (a[i] % 3 == 0) {
+      a[i] = -1;
+    } else if (a[i] % 5 == 0) {
+      a[i] = -2;
+    }
+  }
+  // Show Results
+  for (int i = 0; i < n; i++) {
+    if (a[i] == -1) {
+      puts("Fizz");
+    } else if (a[i] == -2) {
+      puts("Buzz");
+    } else if (a[i] == -3) {
+      puts("FizzBuzz");
+    } else {
+      printf("%d\n", a[i]);
+    }
+  }
+}
+```
+
+Now, this code consists of three parts: initialization, FizzBuzz, and result display. We rewrite the FizzBuzz part with SVE.
+
+First of all, let's deal with the if statement. We use mask operations to express if statements. To make the mask, we fist divide `a[i]` by 3, then multiply it by 3, and determine whether it is a multiple of 3 or not by matching the original number.
+
+It would look like this.
+
+```cpp
+  // FizzBuzz
+  for (int i = 0; i < n; i++) {
+    uint32_t t = a[i];
+    uint32_t r3 = (t / 3) * 3;
+    if (r3 == t) {
+      a[i] = -1;
+    }
+    uint32_t r5 = (t / 5) * 5;
+    if (r5 == t) {
+      a[i] = -2;
+    }
+    uint32_t r15 = (t / 15) * 15;
+    if (r15 == t) {
+      a[i] = -3;
+    }
+  }
+```
+
+We will rewrite this part with intrinsic functions. We don't know the vector length of SVE until runtime, but for simplicity, let's assume that `n` is always a multiple of the number of elements corresponding to the vector length.
+
+Before entering the loop, we prepare registers that contain the necessary constants. ARM SVE intrinsic functions will always receive a predicator register, so we prepare a register which is all true.
+
+```cpp
+  svbool_t tp = svptrue_b32();
+```
+
+Next, we make a vector filled with -1, -2, and -3 for value assignment. `vf`, `vb`, and `vfb` denote "Vector for Fizz", "Vector for Buzz", and "Vector for FizzBuzz", respectively.
+
+```cpp
+  svint32_t vf = svdup_n_s32_x(tp, -1);
+  svint32_t vb = svdup_n_s32_x(tp, -2);
+  svint32_t vfb = svdup_n_s32_x(tp, -3);
+```
+
+We also make a vector filled with 3, 5, and 15 for divisions and multiplications.
+
+```cpp
+  svint32_t v3 = svdup_n_s32_x(tp, 3);
+  svint32_t v5 = svdup_n_s32_x(tp, 5);
+  svint32_t v15 = svdup_n_s32_x(tp, 15);
+```
+
+How many integers, i.e. `uint32_t`, can be stored in SVE registers can be obtained with `cntw`. The corresponding intrinsic function is `svcntw`. Therefore, the loop structure looks as follows.
+
+```cpp
+  int w = svcntw();
+  int s = 0;
+  while (s + w <= n) {
+      // FizzBuzz
+    s += w;
+  }
+```
+
+Here, s is the index of the beginning of the data to be operated.
+
+To load `w` data from the `s`th index of `std::vector<int32_t> a(n)` into a SIMD register, we use `svld1_s32`.
+
+```cpp
+svint32_t va = svld1_s32(svptrue_b32(), a.data() + s);
+```
+
+We prepare a temporaly variable `svint32_t vr` to store the value of `va` divided by 3. The function for integer division is `svdiv_s32_z`.
+
+```cpp
+svint32_t vr;
+vr = svdiv_s32_z(tp, va, v3);
+```
+
+We next multiply by 3. The mfunction for ultiplication of integers is `svmul_s32_z`.
+
+```cpp
+vr = svmul_s32_z(tp, vr, v3);
+```
+
+Now `vr` stores the values of `va` divided by 3 and multiplied by 3. Compare each element between `va` and `vr`, and the location that matches is a multiple of 3. We put the matching locations into the predicate register by `svcmpeq_s32`, which compares the two vector registers as if they were `uint32_t`, and returns the predicate register with the matching location.
+
+```cpp
+svbool_t pg;
+pg = svcmpeq_s32(tp, va, vr);
+```
+
+Since the positions of multiples of 3 are now stored in `pg`, we use it to write the register `vf` filled with -1 back to `a`.
+
+```cpp
+svst1_s32(pg, a.data() + s, vf);
+```
+
+The same goes for multiples of 5 and multiples of 15. Putting all the above together, the code looks like the following.
+
+```cpp
+  // FizzBuzz
+  svbool_t tp = svptrue_b32();
+  svint32_t vf = svdup_n_s32_x(tp, -1);
+  svint32_t vb = svdup_n_s32_x(tp, -2);
+  svint32_t vfb = svdup_n_s32_x(tp, -3);
+
+  svint32_t v3 = svdup_n_s32_x(tp, 3);
+  svint32_t v5 = svdup_n_s32_x(tp, 5);
+  svint32_t v15 = svdup_n_s32_x(tp, 15);
+
+  int w = svcntw();
+  int s = 0;
+
+  while (s + w <= n) {
+    svint32_t va = svld1_s32(svptrue_b32(), a.data() + s);
+
+    svint32_t vr;
+    svbool_t pg;
+    vr = svdiv_s32_z(tp, va, v3);
+    vr = svmul_s32_z(tp, vr, v3);
+    pg = svcmpeq_s32(tp, va, vr);
+    svst1_s32(pg, a.data() + s, vf);
+
+    vr = svdiv_s32_z(tp, va, v5);
+    vr = svmul_s32_z(tp, vr, v5);
+    pg = svcmpeq_s32(tp, va, vr);
+    svst1_s32(pg, a.data() + s, vb);
+
+    vr = svdiv_s32_z(tp, va, v15);
+    vr = svmul_s32_z(tp, vr, v15);
+    pg = svcmpeq_s32(tp, va, vr);
+    svst1_s32(pg, a.data() + s, vfb);
+    s += w;
+  }
+```
+
+The sample code is in `sample/intrinsic/04_fizzbuzz`. You can build and run the sample as follows.
+
+```sh
+$ make
+aarch64-linux-gnu-g++ -static -march=armv8-a+sve -O2 fizzbuzz.cpp
+$ ./a.out
+1
+2
+Fizz
+4
+Buzz
+(snip)
+26
+Fizz
+28
+29
+FizzBuzz
+31
+32
+```
+
+You can confirm that changing the register length does not change the result.
+
+```sh
+qemu-aarch64 -cpu max,sve128=on ./a.out
+qemu-aarch64 -cpu max,sve256=on ./a.out
+qemu-aarch64 -cpu max,sve512=on ./a.out
+```
+
+You should see the same results for all of the aboves.
 
 ## Xbyak_aarch64
 
