@@ -570,6 +570,182 @@ You will see `42` as the rsult.
 
 ### 2. Calling convention
 
+Xbyak is a tool for writing a function in full assembly. In assembly, function calls are jumps, and registers and other variables are all global variables, so it is up to the programmer to decide how to pass function arguments and how to return values. However, when using a high-level language such as C, it is inconvenient if each compiler has different calling conventions, because object files compiled by different compilers cannot be linked. The Application Binary Interface (ABI) defines binary-level interfaces for each ISA, and calling conventions are one of the many things defined by the ABI. In the following, we will take a brief look at the calling convention and how to write Xbyak.
+
+In the directory `/sample/xbyak/02_abi`, there is `abi.cpp` as a template code of Xbyak.
+
+```cpp
+#include <cstdio>
+#include <xbyak_aarch64/xbyak_aarch64.h>
+
+struct Code : Xbyak_aarch64::CodeGenerator {
+  Code() {
+    ret();
+  }
+};
+
+int main() {
+  Code c;
+  auto f = c.getCode<void (*)()>();
+  c.ready();
+}
+```
+
+This code is a sample that creates and executes a function that does nothing but simply return when called. Since the signature of the function is `void f()`, we pass the type `void (*)()` to getCode. First, we will modify it to a function that returns an integer 1. To do this, we need to know how to return an integer in AAarch64. Of course, you can read [the official document](https://github.com/fujitsu/A64FX) (136 pages, wow!), but it's not practical to read or memorize it every time. Here it is easy to write a simple code and compile it. So, let's write some simple code and compile it to see the calling convention.
+
+Consider a code like the following.
+
+```cpp
+int func(){
+  return 1;
+}
+```
+
+Compile it and see the assembly.
+
+```sh
+$ ag++ -S test.cpp
+$ cat test.s
+        .arch armv8-a+sve
+        .file   "test.cpp"
+        .text
+        .align  2
+        .p2align 4,,11
+        .global _Z4funcv
+        .type   _Z4funcv, %function
+_Z4funcv:
+.LFB0:
+        .cfi_startproc
+        mov     w0, 1
+        ret
+        .cfi_endproc
+.LFE0:
+        .size   _Z4funcv, .-_Z4funcv
+        .ident  "GCC: (GNU) 11.2.0"
+        .section        .note.GNU-stack,"",@progbits
+```
+
+This shows that an integer should be returned by putting their value in the register `w0`. From here, we can see that we should modify `abi.cpp` as follows.
+
+```cpp
+#include <cstdio>
+#include <xbyak_aarch64/xbyak_aarch64.h>
+
+struct Code : Xbyak_aarch64::CodeGenerator {
+  Code() {
+    mov(w0, 1); // mov w0, 1 
+    ret();
+  }
+};
+
+int main() {
+  Code c;
+  auto f = c.getCode<int (*)()>(); // Fixed function pointer type to correspond to int f().
+  c.ready();
+  printf("%d\n",f()); // Display the result of f()
+}
+```
+
+Let's compile and run it.
+
+```sh
+$ make
+$ ./a.out
+1
+```
+
+You will see 1 as the result.
+
+Next, let's take arguments. Let's consider a function that takes an integer and returns a value added by 1. As before, let's ask the compiler to tell us the assembly.
+
+```cpp
+int func(int i){
+  return i+1;
+}
+```
+
+If you compile the above code with `ag++ -S`, you will see that the corresponding assembly looks like the following.
+
+```txt
+  add w0, w0, 1
+  ret
+```
+
+That is, the first integer argument comes in `w0`, so we should assign the result of adding `1` to it to `w0`. The corresponding code of Xbyak will be as follows.
+
+```cpp
+#include <cstdio>
+#include <xbyak_aarch64/xbyak_aarch64.h>
+
+struct Code : Xbyak_aarch64::CodeGenerator {
+  Code() {
+    add(w0, w0, 1);
+    ret();
+  }
+};
+
+int main() {
+  Code c;
+  auto f = c.getCode<int (*)(int)>(); // the signature of function is changed to be `int f(int)`
+  printf("%d\n",f(1)); // call f(1)
+  c.ready();
+}
+```
+
+You will see 2 as the results.
+
+```sh
+$ make
+$ ./a.out
+2
+```
+
+In similar manner, we can write a function that takes two arguments and returns the sum as follows.
+
+```cpp
+#include <cstdio>
+#include <xbyak_aarch64/xbyak_aarch64.h>
+
+struct Code : Xbyak_aarch64::CodeGenerator {
+  Code() {
+    add(w0, w0, w1); // w0 = w0 + w1
+    ret();
+  }
+};
+
+int main() {
+  Code c;
+  auto f = c.getCode<int (*)(int, int)>(); // the signature is changed to be `int f(int, int)`
+  printf("%d\n",f(3,4)); // calculate 3+4
+  c.ready();
+}
+```
+
+You will get 7 as a result of adding 3 to 4.
+
+Since we treat integer operation here, he registers were `w0, w1` and the add instruction was `add`. If we change the registers to `d0, d1` and the add instruction to `fadd`, we can make it a double-precision version.
+
+```cpp
+#include <cstdio>
+#include <xbyak_aarch64/xbyak_aarch64.h>
+
+struct Code : Xbyak_aarch64::CodeGenerator {
+  Code() {
+    fadd(d0, d0, d1); // d0 = d0 + d1
+    ret();
+  }
+};
+
+int main() {
+  Code c;
+  auto f = c.getCode<double (*)(double, double)>(); // double f(double, double);
+  printf("%f\n",f(3.0,4.0)); // calculate 3.0+4.0
+  c.ready();
+}
+```
+
+You will see `7.000000` as the result.
+
 ### 3. Display the assembler mnemonics generated by Xbyak
 
 ### 4. Fizz Buzz Implementation with Xbyak
