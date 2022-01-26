@@ -1404,10 +1404,12 @@ RUN echo 'root:root' | chpasswd
 
 ```Dockerfile
 RUN sed -i '1iServer = https://ftp.jaist.ac.jp/pub/Linux/ArchLinux/$repo/os/$arch' /etc/pacman.d/mirrorlist
-RUN pacman -Syyu --noconfirm && \
+RUN pacman -Sy --noconfirm archlinux-keyring && \
+  pacman -Syyu --noconfirm && \
   pacman -S --noconfirm \
   aarch64-linux-gnu-gcc \
-  git \
+  emacs \
+  git  \
   make \
   vim \
   qemu \
