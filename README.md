@@ -30,7 +30,7 @@ You can use Arm SVE instructions via intrinsic function of C language, which is 
 
 ### 1. SVE Length
 
-Since the length of the vector is *scalble*, and the length is not determined at compile time. So, let's first look at a sample that gets the vector length at runtime.
+Since the length of the vector is *scalable*, and the length is not determined at compile time. So, let's first look at a sample that gets the vector length at runtime.
 
 The sample code can be built as follows.
 
