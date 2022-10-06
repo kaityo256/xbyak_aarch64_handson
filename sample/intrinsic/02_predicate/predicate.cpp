@@ -17,7 +17,7 @@ void show_pr(svbool_t tp) {
 }
 
 void ptrue() {
-  std::cout << "# pture samples for various types" << std::endl;
+  std::cout << "# ptrue samples for various types" << std::endl;
   std::cout << "svptrue_b8" << std::endl;
   show_pr(svptrue_b8());
   std::cout << "svptrue_b16" << std::endl;
@@ -29,7 +29,7 @@ void ptrue() {
 }
 
 void ptrue_pat() {
-  std::cout << "# pture_pat samples for vrious patterns" << std::endl;
+  std::cout << "# ptrue_pat samples for vrious patterns" << std::endl;
   std::cout << "svptrue_pat_b8(SV_ALL)" << std::endl;
   show_pr(svptrue_pat_b8(SV_ALL));
   std::cout << "svptrue_pat_b8(SV_VL1)" << std::endl;
@@ -43,7 +43,7 @@ void ptrue_pat() {
 }
 
 void ptrue_pat_types() {
-  std::cout << "# pture_pat samples for various types" << std::endl;
+  std::cout << "# ptrue_pat samples for various types" << std::endl;
   std::cout << "svptrue_pat_b8(SV_VL2)" << std::endl;
   show_pr(svptrue_pat_b8(SV_VL2));
   std::cout << "svptrue_pat_b16(SV_VL2)" << std::endl;
