@@ -29,7 +29,7 @@ void ptrue() {
 }
 
 void ptrue_pat() {
-  std::cout << "# ptrue_pat samples for vrious patterns" << std::endl;
+  std::cout << "# ptrue_pat samples for various patterns" << std::endl;
   std::cout << "svptrue_pat_b8(SV_ALL)" << std::endl;
   show_pr(svptrue_pat_b8(SV_ALL));
   std::cout << "svptrue_pat_b8(SV_VL1)" << std::endl;

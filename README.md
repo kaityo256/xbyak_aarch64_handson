@@ -4,7 +4,7 @@
 
 ## Summary
 
-This document is a hans-on for people who want to try Arm SVE on Docker. To have an environment to try Arm SVE with QEMU, just run the following.
+This document is a hands-on for people who want to try Arm SVE on Docker. To have an environment to try Arm SVE with QEMU, just run the following.
 
 ```sh
 docker run -it kaityo256/xbyak_aarch64_handson
@@ -24,7 +24,7 @@ In the following, you will try ARM SVE with intrinsic functions and Xbyak_aarch6
 
 This document is an English translation of the [Japanese version](README_ja.md). The English in this document can be poor, so we appreciate pull requests for improvements.
 
-## Intrinsic Functiosn
+## Intrinsic Functions
 
 You can use Arm SVE instructions via intrinsic function of C language, which is called the Arm C Language Extensions (ACLEs) for SVE. The sample codes for the intrinsic functions are in the directory `~/xbyak_aarch64_handson/sample/intrinsic`.
 
@@ -156,7 +156,7 @@ There are various ways to give patterns to the predicate registers, for example,
 
 ```cpp
 void ptrue_pat() {
-  std::cout << "# pture_pat samples for vrious patterns" << std::endl;
+  std::cout << "# ptrue_pat samples for various patterns" << std::endl;
   std::cout << "svptrue_pat_b8(SV_ALL)" << std::endl;
   show_pr(svptrue_pat_b8(SV_ALL));
   std::cout << "svptrue_pat_b8(SV_VL1)" << std::endl;
@@ -173,7 +173,7 @@ void ptrue_pat() {
 The output will be as follows.
 
 ```txt
-# pture_pat samples for vrious patterns
+# ptrue_pat samples for various patterns
 svptrue_pat_b8(SV_ALL)
 1111111111111111111111111111111111111111111111111111111111111111
 svptrue_pat_b8(SV_VL1)
@@ -318,7 +318,7 @@ In SVE, you need to code for variable length SIMD registers like this, making fu
 
 ### 4. Fizz Buzz Implementation with ACLE SVE
 
-Let's try to write FizzBuzz as an example of code that makes full use of scalable SIMD registers and mask operations. Instead of displaying as Fizz or Buzz, we replace elements with -1, -2, or -3 when they are multiple of 3, 5, or 15, respectively.
+Let's try to write Fizz Buzz as an example of code that makes full use of scalable SIMD registers and mask operations. Instead of displaying as Fizz or Buzz, we replace elements with -1, -2, or -3 when they are multiple of 3, 5, or 15, respectively.
 
 The serial code looks like this.
 
@@ -426,14 +426,14 @@ To load `w` data from the `s`th index of `std::vector<int32_t> a(n)` into a SIMD
 svint32_t va = svld1_s32(svptrue_b32(), a.data() + s);
 ```
 
-We prepare a temporaly variable `svint32_t vr` to store the value of `va` divided by 3. The function for integer division is `svdiv_s32_z`.
+We prepare a temporary variable `svint32_t vr` to store the value of `va` divided by 3. The function for integer division is `svdiv_s32_z`.
 
 ```cpp
 svint32_t vr;
 vr = svdiv_s32_z(tp, va, v3);
 ```
 
-We next multiply by 3. The mfunction for ultiplication of integers is `svmul_s32_z`.
+We next multiply by 3. The function for multiplication of integers is `svmul_s32_z`.
 
 ```cpp
 vr = svmul_s32_z(tp, vr, v3);
@@ -520,7 +520,7 @@ qemu-aarch64 -cpu max,sve256=on ./a.out
 qemu-aarch64 -cpu max,sve512=on ./a.out
 ```
 
-You should see the same results for all of the aboves.
+You should see the same results for all of the above.
 
 ## Xbyak_aarch64
 
@@ -571,7 +571,7 @@ $ ./a.out
 42
 ```
 
-You will see `42` as the rsult.
+You will see `42` as the result.
 
 ### 2. Calling convention
 
@@ -839,7 +839,7 @@ struct Code : Xbyak_aarch64::CodeGenerator {
 };
 ```
 
-The constructor `Code` recieves `int n` and repeats `add(w0, w0, 1);` as many times as it takes. Specify the number of iterations as `Code c(3);`.
+The constructor `Code` receives `int n` and repeats `add(w0, w0, 1);` as many times as it takes. Specify the number of iterations as `Code c(3);`.
 
 ```cpp
 int main() {
@@ -914,7 +914,7 @@ You can see that Xbyak generates code dynamically.
 
 ### 4. Fizz Buzz Implementation with Xbyak
 
-Finally, let's try to write FizzBuzz with Xbyak. As in the example of instrinsic functions, FizzBuzz is expressed by writing -1 for multiples of 3, -2 for multiples of 5, and -3 for multiples of 15 to an array of integers of type `int32_t`. The data are stored in `std::vector` of the type `int32_t`, and the first address is passed as an argument of the function made by Xbyak.
+Finally, let's try to write FizzBuzz with Xbyak. As in the example of intrinsic functions, FizzBuzz is expressed by writing -1 for multiples of 3, -2 for multiples of 5, and -3 for multiples of 15 to an array of integers of type `int32_t`. The data are stored in `std::vector` of the type `int32_t`, and the first address is passed as an argument of the function made by Xbyak.
 
 The algorithm is as follows.
 
